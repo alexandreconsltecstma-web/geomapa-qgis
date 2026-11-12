@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GeoMapa QGIS</title>
+<meta name="description" content="Gere mapas de localização e de áreas de influência (AID/AII) no navegador e baixe o pacote pronto para o QGIS.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32 4C21 4 12 13 12 24c0 15 20 36 20 36s20-21 20-36C52 13 43 4 32 4z' fill='%233e5a1e'/%3E%3Ccircle cx='32' cy='24' r='8' fill='%23f5e9c8'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@10.2.1/ol.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topo">
+  <div class="marca">
+    <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M32 4C21 4 12 13 12 24c0 15 20 36 20 36s20-21 20-36C52 13 43 4 32 4z" fill="currentColor"/><circle cx="32" cy="24" r="8" fill="var(--creme)"/></svg>
+    <div><h1>GeoMapa QGIS</h1><p>Mapas de localização e de áreas de influência, prontos para imprimir ou abrir no QGIS</p></div>
+  </div>
+  <button id="btn-ajuda" class="link" type="button">Como funciona</button>
+</header>
+
+<main class="app">
+  <aside class="painel" aria-label="Configuração do mapa">
+    <section class="bloco">
+      <h2><span class="num">1</span> Local</h2>
+      <form id="form-busca" class="linha">
+        <input id="busca" type="search" placeholder="Buscar endereço ou cidade" autocomplete="off">
+        <button type="submit">Buscar</button>
+      </form>
+      <ul id="resultados" class="resultados" hidden></ul>
+      <div class="duas">
+        <label>Latitude<input id="lat" type="text" inputmode="decimal" placeholder="-9.626778"></label>
+        <label>Longitude<input id="lon" type="text" inputmode="decimal" placeholder="-35.716825"></label>
+      </div>
+      <p class="dica">Ou clique no mapa para marcar o ponto.</p>
+      <label class="arquivo">Carregar KML, KMZ ou GeoJSON (ponto e/ou polígono do lote)
+        <input id="arquivo" type="file" accept=".kml,.kmz,.geojson,.json">
+      </label>
+      <p id="info-local" class="info" aria-live="polite"></p>
+    </section>
+
+    <section class="bloco">
+      <h2><span class="num">2</span> Tipo de mapa</h2>
+      <div class="opcoes" role="radiogroup">
+        <label><input type="radio" name="modelo" value="localizacao" checked><span><b>Localização</b>Ponto e lote sobre o mapa de ruas</span></label>
+        <label><input type="radio" name="modelo" value="influencia"><span><b>Áreas de influência</b>ADA, AID e AII sobre imagem de satélite</span></label>
+        <label><input type="radio" name="modelo" value="municipio"><span><b>Situação no município</b>Limite municipal do IBGE e o ponto</span></label>
+      </div>
+      <div class="duas" id="raios">
+        <label>Raio da AID (m)<input id="raio1" type="number" min="10" step="10" value="100"></label>
+        <label>Raio externo da AII (m)<input id="raio2" type="number" min="20" step="10" value="200"></label>
+      </div>
+      <label>Mapa de fundo
+        <select id="base">
+          <option value="osm">Ruas (OpenStreetMap)</option>
+          <option value="satelite">Satélite (Esri)</option>
+          <option value="topo">Topográfico (OpenTopoMap)</option>
+        </select>
+      </label>
+      <label class="check"><input id="mostrar-mun" type="checkbox"> Mostrar limite municipal (IBGE)</label>
+    </section>
+
+    <section class="bloco">
+      <h2><span class="num">3</span> Textos do mapa</h2>
+      <label>Título<input id="titulo" type="text" value="Mapa de localização do empreendimento"></label>
+      <label>Subtítulo<input id="subtitulo" type="text" placeholder="Ex.: Empresa – endereço – cidade/UF"></label>
+      <label>Empreendimento<input id="empreendimento" type="text" placeholder="Nome do empreendimento"></label>
+      <label>Rótulo do ponto<input id="rotulo" type="text" placeholder="Ex.: Loja 425" maxlength="40"></label>
+      <label>Endereço<input id="endereco" type="text" placeholder="Rua, número – bairro, cidade/UF"></label>
+      <div class="duas">
+        <label>Responsável<input id="responsavel" type="text" placeholder="Opcional"></label>
+        <label>Data<input id="data" type="text"></label>
+      </div>
+    </section>
+
+    <section class="bloco acoes">
+      <h2><span class="num">4</span> Baixar</h2>
+      <button id="btn-png" class="primario" type="button" disabled>Mapa em PNG</button>
+      <button id="btn-pdf" class="primario" type="button" disabled>Mapa em PDF (A4)</button>
+      <button id="btn-qgis" type="button" disabled>Pacote para o QGIS (.zip)</button>
+      <p id="status" class="info" aria-live="polite">Marque um ponto para habilitar os downloads.</p>
+    </section>
+  </aside>
+
+  <section class="area-mapa">
+    <div id="mapa" class="mapa" tabindex="0" aria-label="Mapa interativo"></div>
+    <p class="rodape-mapa">O enquadramento do mapa baixado é o que aparece aqui: ajuste o zoom antes de baixar.</p>
+  </section>
+</main>
+
+<dialog id="ajuda">
+  <h2>Como funciona</h2>
+  <ol>
+    <li><b>Marque o local:</b> busque um endereço, digite as coordenadas, clique no mapa ou carregue o KML/GeoJSON do lote.</li>
+    <li><b>Escolha o tipo de mapa</b> e o fundo. No modo "Áreas de influência", os raios da AID e da AII são calculados a partir do ponto.</li>
+    <li><b>Preencha os textos</b> e ajuste o zoom: o mapa baixado usa o enquadramento da tela.</li>
+    <li><b>Baixe</b> o mapa pronto (PNG ou PDF A4) ou o <b>pacote para o QGIS</b>.</li>
+  </ol>
+  <h3>Abrindo o pacote no QGIS</h3>
+  <ol>
+    <li>Descompacte o .zip numa pasta.</li>
+    <li>No QGIS (3.22 ou mais novo): <i>Complementos › Terminal Python</i>, botão <i>Mostrar editor</i>.</li>
+    <li>Abra o arquivo <code>gerar_mapa_qgis.py</code> e clique em <i>Executar script</i>.</li>
+    <li>O QGIS carrega as camadas, cria o layout de impressão e salva <code>mapa.pdf</code>, <code>mapa.png</code> e <code>mapa.qgz</code> na pasta.</li>
+  </ol>
+  <p class="dica">Tudo é processado no seu navegador; os dados digitados não são enviados a nenhum servidor deste site. A busca de endereço usa o Nominatim (OpenStreetMap) e os limites vêm da API de malhas do IBGE.</p>
+  <form method="dialog"><button class="primario">Entendi</button></form>
+</dialog>
+
+<script src="https://cdn.jsdelivr.net/npm/ol@10.2.1/dist/ol.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@turf/turf@7.1.0/turf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tmcw/togeojson@5.8.1/dist/togeojson.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
