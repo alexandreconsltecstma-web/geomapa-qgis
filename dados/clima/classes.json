@@ -1,0 +1,285 @@
+{
+"fonte": "CHELSA v2.1 – Karger et al. (2017, 2021), normal climatológica 1981–2010, ~1 km (reamostrado a 0,02°)",
+"koppen": [
+{
+"id": 1,
+"sigla": "Af",
+"nome": "Tropical úmido (sem estação seca)",
+"cor": "#0000ff"
+},
+{
+"id": 2,
+"sigla": "Am",
+"nome": "Tropical de monção",
+"cor": "#0078ff"
+},
+{
+"id": 3,
+"sigla": "As",
+"nome": "Tropical com verão seco",
+"cor": "#96c8ff"
+},
+{
+"id": 4,
+"sigla": "Aw",
+"nome": "Tropical com inverno seco (savana)",
+"cor": "#46aafa"
+},
+{
+"id": 5,
+"sigla": "BWk",
+"nome": "Árido frio",
+"cor": "#ff9696"
+},
+{
+"id": 6,
+"sigla": "BWh",
+"nome": "Árido quente",
+"cor": "#ff0000"
+},
+{
+"id": 7,
+"sigla": "BSk",
+"nome": "Semiárido frio",
+"cor": "#ffdc64"
+},
+{
+"id": 8,
+"sigla": "BSh",
+"nome": "Semiárido quente",
+"cor": "#f5a500"
+},
+{
+"id": 9,
+"sigla": "Cfa",
+"nome": "Subtropical úmido, verão quente",
+"cor": "#c8ff50"
+},
+{
+"id": 10,
+"sigla": "Cfb",
+"nome": "Subtropical úmido, verão temperado",
+"cor": "#64ff50"
+},
+{
+"id": 11,
+"sigla": "Cfc",
+"nome": "Subtropical úmido, verão frio",
+"cor": "#32c800"
+},
+{
+"id": 12,
+"sigla": "Csa",
+"nome": "Subtropical, verão seco e quente",
+"cor": "#ffff00"
+},
+{
+"id": 13,
+"sigla": "Csb",
+"nome": "Subtropical, verão seco e temperado",
+"cor": "#c8c800"
+},
+{
+"id": 14,
+"sigla": "Csc",
+"nome": "Subtropical, verão seco e frio",
+"cor": "#969600"
+},
+{
+"id": 15,
+"sigla": "Cwa",
+"nome": "Subtropical, inverno seco e verão quente",
+"cor": "#96ff96"
+},
+{
+"id": 16,
+"sigla": "Cwb",
+"nome": "Subtropical de altitude, inverno seco e verão temperado",
+"cor": "#64c864"
+},
+{
+"id": 17,
+"sigla": "Cwc",
+"nome": "Subtropical, inverno seco e verão frio",
+"cor": "#329632"
+},
+{
+"id": 18,
+"sigla": "Dfa",
+"nome": "Continental úmido, verão quente",
+"cor": "#00ffff"
+},
+{
+"id": 19,
+"sigla": "Dfb",
+"nome": "Continental úmido, verão temperado",
+"cor": "#37c8ff"
+},
+{
+"id": 20,
+"sigla": "Dfc",
+"nome": "Subártico úmido",
+"cor": "#007d7d"
+},
+{
+"id": 21,
+"sigla": "Dfd",
+"nome": "Subártico úmido, inverno muito frio",
+"cor": "#00465f"
+},
+{
+"id": 22,
+"sigla": "Dsa",
+"nome": "Continental, verão seco e quente",
+"cor": "#ff00ff"
+},
+{
+"id": 23,
+"sigla": "Dsb",
+"nome": "Continental, verão seco",
+"cor": "#c800c8"
+},
+{
+"id": 24,
+"sigla": "Dsc",
+"nome": "Subártico, verão seco",
+"cor": "#963296"
+},
+{
+"id": 25,
+"sigla": "Dsd",
+"nome": "Subártico, verão seco, inverno muito frio",
+"cor": "#966496"
+},
+{
+"id": 26,
+"sigla": "Dwa",
+"nome": "Continental, inverno seco e verão quente",
+"cor": "#aaafff"
+},
+{
+"id": 27,
+"sigla": "Dwb",
+"nome": "Continental, inverno seco",
+"cor": "#5a78dc"
+},
+{
+"id": 28,
+"sigla": "Dwc",
+"nome": "Subártico, inverno seco",
+"cor": "#4b50b4"
+},
+{
+"id": 29,
+"sigla": "Dwd",
+"nome": "Subártico, inverno seco e muito frio",
+"cor": "#320087"
+},
+{
+"id": 30,
+"sigla": "ET",
+"nome": "Tundra (alta montanha)",
+"cor": "#b2b2b2"
+},
+{
+"id": 31,
+"sigla": "EF",
+"nome": "Gelo perpétuo",
+"cor": "#666666"
+}
+],
+"temperatura": [
+{
+"id": 1,
+"nome": "Até 16 °C",
+"cor": "#313695"
+},
+{
+"id": 2,
+"nome": "16 a 18 °C",
+"cor": "#4575b4"
+},
+{
+"id": 3,
+"nome": "18 a 20 °C",
+"cor": "#74add1"
+},
+{
+"id": 4,
+"nome": "20 a 22 °C",
+"cor": "#abd9e9"
+},
+{
+"id": 5,
+"nome": "22 a 24 °C",
+"cor": "#fee090"
+},
+{
+"id": 6,
+"nome": "24 a 26 °C",
+"cor": "#fdae61"
+},
+{
+"id": 7,
+"nome": "26 a 28 °C",
+"cor": "#f46d43"
+},
+{
+"id": 8,
+"nome": "Acima de 28 °C",
+"cor": "#a50026"
+}
+],
+"precipitacao": [
+{
+"id": 1,
+"nome": "Até 500 mm/ano",
+"cor": "#8c510a"
+},
+{
+"id": 2,
+"nome": "500 a 750 mm/ano",
+"cor": "#bf812d"
+},
+{
+"id": 3,
+"nome": "750 a 1.000 mm/ano",
+"cor": "#dfc27d"
+},
+{
+"id": 4,
+"nome": "1.000 a 1.250 mm/ano",
+"cor": "#f6e8c3"
+},
+{
+"id": 5,
+"nome": "1.250 a 1.500 mm/ano",
+"cor": "#c7eae5"
+},
+{
+"id": 6,
+"nome": "1.500 a 1.750 mm/ano",
+"cor": "#80cdc1"
+},
+{
+"id": 7,
+"nome": "1.750 a 2.000 mm/ano",
+"cor": "#35978f"
+},
+{
+"id": 8,
+"nome": "2.000 a 2.500 mm/ano",
+"cor": "#01665e"
+},
+{
+"id": 9,
+"nome": "2.500 a 3.000 mm/ano",
+"cor": "#2c5f9e"
+},
+{
+"id": 10,
+"nome": "Acima de 3.000 mm/ano",
+"cor": "#1a2f6b"
+}
+]
+}
