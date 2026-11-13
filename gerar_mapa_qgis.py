@@ -259,7 +259,8 @@ def main():
         cam.extend(tc)
         leg.extend(tl)
     nome_base, url, credito = BASES.get(cfg.get("base", "osm"), BASES["osm"])
-    base = QgsRasterLayer(f"type=xyz&url={url}&zmax=19&zmin=0", nome_base, "wms")
+    zmax = {"satelite": 18, "claro": 16, "topo": 17}.get(cfg.get("base"), 19)  # acima disso os blocos são ampliados
+    base = QgsRasterLayer(f"type=xyz&url={url}&zmax={zmax}&zmin=0", nome_base, "wms")
     proj.addMapLayer(base, False)
     cam.append(base)
     ufs = camada(pasta, "camadas/brasil_ufs.geojson", "UFs", geo)

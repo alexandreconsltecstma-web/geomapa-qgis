@@ -70,11 +70,13 @@ const mapa = new ol.Map({
     .extend([new ol.control.ScaleLine({ units: "metric" })]),
 });
 
+// Nível máximo em que cada fundo tem blocos de verdade. Acima disso o bloco é ampliado (a Esri devolve
+// "Map data not yet available" no satélite acima do nível 18 em boa parte do Brasil).
+const ZOOM_FONTE = { osm: 19, satelite: 18, claro: 16, topo: 17 };
 function aplicarBase() {
-  const b = BASES[$("base").value];
-  fonteBase.setUrl(b.url);
-  fonteBase.setAttributions(b.attr);
-  mapa.getView().setMaxZoom(b.max);
+  const k = $("base").value, b = BASES[k];
+  camadaBase.setSource(new ol.source.XYZ({ url: b.url, attributions: b.attr, crossOrigin: "anonymous", maxZoom: ZOOM_FONTE[k] || b.max }));
+  mapa.getView().setMaxZoom(Math.max(b.max, 19));
 }
 
 /* ── geometria derivada ───────────────────────────────────────────────── */
