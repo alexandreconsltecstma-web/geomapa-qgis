@@ -1,0 +1,443 @@
+{
+"fonte": "IBGE – BDiA, Pedologia 1:250.000",
+"passo": 5,
+"resolucao": 0.001,
+"classes": [
+{
+"id": 1,
+"nome": "AFLORAMENTO",
+"cor": "#748055"
+},
+{
+"id": 2,
+"nome": "ARGISSOLO ACINZENTADO",
+"cor": "#f1ccc8"
+},
+{
+"id": 3,
+"nome": "ARGISSOLO AMARELO",
+"cor": "#fdf1f0"
+},
+{
+"id": 4,
+"nome": "ARGISSOLO BRUNO-ACINZENTADO",
+"cor": "#fac8fa"
+},
+{
+"id": 5,
+"nome": "ARGISSOLO VERMELHO",
+"cor": "#f07f7f"
+},
+{
+"id": 6,
+"nome": "ARGISSOLO VERMELHO-AMARELO",
+"cor": "#f7c2ff"
+},
+{
+"id": 7,
+"nome": "CAMBISSOLO FLÚVICO",
+"cor": "#ebdbbf"
+},
+{
+"id": 8,
+"nome": "CAMBISSOLO HÁPLICO",
+"cor": "#d7c5a5"
+},
+{
+"id": 9,
+"nome": "CAMBISSOLO HÚMICO",
+"cor": "#cfb680"
+},
+{
+"id": 10,
+"nome": "CHERNOSSOLO ARGILÚVICO",
+"cor": "#9c4a4e"
+},
+{
+"id": 11,
+"nome": "CHERNOSSOLO EBÂNICO",
+"cor": "#aa8686"
+},
+{
+"id": 12,
+"nome": "CHERNOSSOLO HÁPLICO",
+"cor": "#9c5f5f"
+},
+{
+"id": 13,
+"nome": "CHERNOSSOLO RÊNDZICO",
+"cor": "#8e6856"
+},
+{
+"id": 14,
+"nome": "CORPO D'ÁGUA CONTINENTAL",
+"cor": "#bedce6"
+},
+{
+"id": 15,
+"nome": "DUNAS",
+"cor": "#ffff00"
+},
+{
+"id": 16,
+"nome": "ESPODOSSOLO FERRI-HUMILÚVICO",
+"cor": "#b6bec5"
+},
+{
+"id": 17,
+"nome": "ESPODOSSOLO FERRILÚVICO",
+"cor": "#b6bec5"
+},
+{
+"id": 18,
+"nome": "ESPODOSSOLO HUMILÚVICO",
+"cor": "#c1bec5"
+},
+{
+"id": 19,
+"nome": "GLEISSOLO HÁPLICO",
+"cor": "#b6d8ee"
+},
+{
+"id": 20,
+"nome": "GLEISSOLO MELÂNICO",
+"cor": "#78fcfa"
+},
+{
+"id": 21,
+"nome": "GLEISSOLO SÁLICO",
+"cor": "#aa8686"
+},
+{
+"id": 22,
+"nome": "GLEISSOLO TIOMÓRFICO",
+"cor": "#6ca3cd"
+},
+{
+"id": 23,
+"nome": "LATOSSOLO AMARELO",
+"cor": "#fecc5c"
+},
+{
+"id": 24,
+"nome": "LATOSSOLO BRUNO",
+"cor": "#a87000"
+},
+{
+"id": 25,
+"nome": "LATOSSOLO VERMELHO",
+"cor": "#f4b980"
+},
+{
+"id": 26,
+"nome": "LATOSSOLO VERMELHO-AMARELO",
+"cor": "#f7d1a6"
+},
+{
+"id": 27,
+"nome": "LUVISSOLO CRÔMICO",
+"cor": "#d49616"
+},
+{
+"id": 28,
+"nome": "LUVISSOLO HÁPLICO",
+"cor": "#d4b300"
+},
+{
+"id": 29,
+"nome": "NEOSSOLO FLÚVICO",
+"cor": "#eeebdc"
+},
+{
+"id": 30,
+"nome": "NEOSSOLO LITÓLICO",
+"cor": "#96b395"
+},
+{
+"id": 31,
+"nome": "NEOSSOLO QUARTZARÊNICO",
+"cor": "#fffe73"
+},
+{
+"id": 32,
+"nome": "NEOSSOLO REGOLÍTICO",
+"cor": "#cfcece"
+},
+{
+"id": 33,
+"nome": "NITOSSOLO BRUNO",
+"cor": "#68350a"
+},
+{
+"id": 34,
+"nome": "NITOSSOLO HÁPLICO",
+"cor": "#734c00"
+},
+{
+"id": 35,
+"nome": "NITOSSOLO VERMELHO",
+"cor": "#a83800"
+},
+{
+"id": 36,
+"nome": "ORGANOSSOLO HÁPLICO",
+"cor": "#a7b3d5"
+},
+{
+"id": 37,
+"nome": "ORGANOSSOLO TIOMÓRFICO",
+"cor": "#423096"
+},
+{
+"id": 38,
+"nome": "PLANOSSOLO HÁPLICO",
+"cor": "#b5d6ae"
+},
+{
+"id": 39,
+"nome": "PLANOSSOLO NÁTRICO",
+"cor": "#89cac7"
+},
+{
+"id": 40,
+"nome": "PLINTOSSOLO ARGILÚVICO",
+"cor": "#ec87cb"
+},
+{
+"id": 41,
+"nome": "PLINTOSSOLO HÁPLICO",
+"cor": "#d6bac9"
+},
+{
+"id": 42,
+"nome": "PLINTOSSOLO PÉTRICO",
+"cor": "#ecaccb"
+},
+{
+"id": 43,
+"nome": "VERTISSOLO EBÂNICO",
+"cor": "#868f72"
+},
+{
+"id": 44,
+"nome": "VERTISSOLO HIDROMÓRFICO",
+"cor": "#9eaa85"
+},
+{
+"id": 45,
+"nome": "VERTISSOLO HÁPLICO",
+"cor": "#c0c091"
+},
+{
+"id": 46,
+"nome": "ÁREA URBANA",
+"cor": "#808080"
+}
+],
+"blocos": [
+[
+-75,
+-15
+],
+[
+-75,
+-10
+],
+[
+-75,
+-5
+],
+[
+-75,
+0
+],
+[
+-70,
+-15
+],
+[
+-70,
+-10
+],
+[
+-70,
+-5
+],
+[
+-70,
+0
+],
+[
+-65,
+-20
+],
+[
+-65,
+-15
+],
+[
+-65,
+-10
+],
+[
+-65,
+-5
+],
+[
+-65,
+0
+],
+[
+-65,
+5
+],
+[
+-60,
+-35
+],
+[
+-60,
+-30
+],
+[
+-60,
+-25
+],
+[
+-60,
+-20
+],
+[
+-60,
+-15
+],
+[
+-60,
+-10
+],
+[
+-60,
+-5
+],
+[
+-60,
+0
+],
+[
+-60,
+5
+],
+[
+-55,
+-35
+],
+[
+-55,
+-30
+],
+[
+-55,
+-25
+],
+[
+-55,
+-20
+],
+[
+-55,
+-15
+],
+[
+-55,
+-10
+],
+[
+-55,
+-5
+],
+[
+-55,
+0
+],
+[
+-50,
+-30
+],
+[
+-50,
+-25
+],
+[
+-50,
+-20
+],
+[
+-50,
+-15
+],
+[
+-50,
+-10
+],
+[
+-50,
+-5
+],
+[
+-50,
+0
+],
+[
+-45,
+-25
+],
+[
+-45,
+-20
+],
+[
+-45,
+-15
+],
+[
+-45,
+-10
+],
+[
+-45,
+-5
+],
+[
+-40,
+-20
+],
+[
+-40,
+-15
+],
+[
+-40,
+-10
+],
+[
+-40,
+-5
+],
+[
+-35,
+-10
+],
+[
+-35,
+-5
+],
+[
+-30,
+-25
+],
+[
+-30,
+0
+]
+]
+}
