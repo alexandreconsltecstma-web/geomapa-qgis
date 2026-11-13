@@ -258,7 +258,12 @@ function renderizarMapa(larguraPx, alturaPx, soTema) {
     const ext = view.calculateExtent(tamOrig);
     const res = Math.max(ol.extent.getWidth(ext) / larguraPx, ol.extent.getHeight(ext) / alturaPx);
     const div = mapa.getTargetElement();
-    const timeout = setTimeout(() => { restaurar(); reject(new Error("O fundo do mapa demorou demais para carregar.")); }, 45000);
+    // relevo e imagens grandes podem demorar: após 120 s segue com o que já foi desenhado (alguns blocos podem faltar)
+    let compor = null;
+    const timeout = setTimeout(() => {
+      if (compor) { console.warn("exportação: o fundo não terminou de carregar em 120 s; seguindo com o que já foi desenhado"); compor(); }
+      else { restaurar(); reject(new Error("O fundo do mapa demorou demais para carregar.")); }
+    }, 120000);
     exportando = true;  // o redimensionamento da exportação não deve recarregar o tema
     const ocultas = [];
     if (soTema) {
@@ -277,7 +282,10 @@ function renderizarMapa(larguraPx, alturaPx, soTema) {
       mapa.updateSize();
       view.setResolution(resOrig);
     }
-    mapa.once("rendercomplete", () => {
+    let feito = false;
+    compor = () => {
+      if (feito) return;
+      feito = true;
       clearTimeout(timeout);
       try {
         const tela = document.createElement("canvas");
@@ -315,7 +323,8 @@ function renderizarMapa(larguraPx, alturaPx, soTema) {
         restaurar();
         resolve({ tela, geo });
       } catch (e) { restaurar(); reject(e); }
-    });
+    };
+    mapa.once("rendercomplete", compor);
     // Ajusta o elemento do mapa à proporção do quadro, com largura de tela razoável.
     const larguraCss = Math.min(1600, larguraPx / 1.0);
     const fator = larguraCss / larguraPx;
@@ -611,7 +620,7 @@ async function comBotao(id, rotulo, fn) {
   const b = $(id), txt = b.textContent;
   for (const x of ["btn-png", "btn-pdf", "btn-qgis"]) $(x).disabled = true;
   b.textContent = rotulo;
-  status("Preparando o arquivo… (o fundo do mapa é baixado em alta resolução)");
+  status("Preparando o arquivo… o fundo do mapa é baixado em alta resolução (relevo e satélite podem levar até 2 minutos).");
   try { await fn(); status("Arquivo pronto. Confira a pasta de downloads."); }
   catch (e) { console.error(e); status(`Não foi possível gerar o arquivo: ${e.message}`, true); }
   finally { b.textContent = txt; for (const x of ["btn-png", "btn-pdf", "btn-qgis"]) $(x).disabled = !estado.ponto; b.disabled = false; }
