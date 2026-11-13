@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Painel de Condicionantes – PA Consultoria Ambiental</title>
+<link rel="icon" href="logo.png">
+<link rel="stylesheet" href="painel.css">
+</head>
+<body>
+<header class="topo">
+  <div class="marca">
+    <img src="logo.png" alt="PA Consultoria Ambiental">
+    <div>
+      <h1>Painel de condicionantes</h1>
+      <p>PA Consultoria Ambiental · SMDUMA Arapiraca/AL · <span id="hoje"></span></p>
+    </div>
+  </div>
+  <div class="acoes-topo">
+    <a class="btn claro" href="../" title="GeoMapa: mapas de localização, áreas de influência, solos, clima…">🗺 Mapas</a>
+    <button class="btn" id="bAdd" type="button"><span aria-hidden="true">＋</span> Nova licença</button>
+    <button class="btn claro" id="bGen" type="button"><span aria-hidden="true">🖨</span> Gerar calendário</button>
+    <details class="menu">
+      <summary class="btn claro">Links <span aria-hidden="true">▾</span></summary>
+      <div class="menu-itens">
+        <a target="_blank" rel="noopener" href="https://drive.google.com/drive/folders/1wivzbvHLdpMhCEGJZJw2WgVI0yJBQmaX">📁 Pasta no Drive</a>
+        <a target="_blank" rel="noopener" href="https://drive.google.com/drive/folders/1QnI1jaTgVv947vLa1w5iox1MEt_NHwgX">📅 Calendários por empresa</a>
+        <a target="_blank" rel="noopener" href="https://docs.google.com/spreadsheets/d/1_EM94xSt45RF1JFJarbFYRyDFWI4pXDGDk1e0CPdX4o">📊 Planilha dashboard</a>
+      </div>
+    </details>
+    <button class="btn icone claro" id="bAjuda" type="button" title="Como usar o painel" aria-label="Como usar o painel">?</button>
+  </div>
+</header>
+
+<nav class="abas" id="abas" aria-label="Seções do painel">
+  <button data-t="dash" class="on"><span aria-hidden="true">◧</span> Dashboard</button>
+  <button data-t="ag"><span aria-hidden="true">☑</span> Agenda de entregas <b class="cont" id="cAg"></b></button>
+  <button data-t="li"><span aria-hidden="true">▤</span> Licenças <b class="cont" id="cLi"></b></button>
+  <button data-t="cl"><span aria-hidden="true">▦</span> Calendário</button>
+</nav>
+
+<main>
+  <section id="dash" aria-label="Dashboard"></section>
+  <section id="ag" hidden aria-label="Agenda de entregas"></section>
+  <section id="li" hidden aria-label="Licenças"></section>
+  <section id="cl" hidden aria-label="Calendário"></section>
+</main>
+
+<footer>
+  Datas contadas a partir da emissão de cada licença; "na renovação" = 120 dias antes do vencimento. Os status são
+  calculados pela data de hoje. Confirme os prazos com a SMDUMA. As marcações de "entregue" e as licenças adicionadas
+  ficam salvas só neste navegador: use <b>Backup</b> (aba Licenças) para levar para outro computador.
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite"><span id="toastTxt"></span><button id="toastDesf" type="button" hidden>Desfazer</button></div>
+
+<!-- detalhe da licença -->
+<dialog id="dDet" class="painel-lateral"><div class="dh"><div><b id="detT"></b><small id="detS"></small></div><button class="fechar" type="button" data-fecha aria-label="Fechar">×</button></div><div class="db" id="detB"></div></dialog>
+
+<!-- dia do calendário -->
+<dialog id="dDia"><div class="dh"><div><b id="diaT"></b></div><button class="fechar" type="button" data-fecha aria-label="Fechar">×</button></div><div class="db" id="diaB"></div></dialog>
+
+<!-- ajuda -->
+<dialog id="dAjuda"><div class="dh"><div><b>Como usar o painel</b></div><button class="fechar" type="button" data-fecha aria-label="Fechar">×</button></div>
+<div class="db ajuda">
+  <ol class="passos">
+    <li><b>Dashboard</b> mostra o que precisa de atenção agora: entregas atrasadas, as da semana, as renovações que se aproximam e quais empresas estão com pendências. Clique em qualquer número ou barra para ver a lista.</li>
+    <li><b>Agenda de entregas</b> lista todas as condicionantes por data. Quando uma entrega for feita, marque <span class="tag t-ent">✔</span> na linha. Se marcar por engano, use <b>Desfazer</b>.</li>
+    <li><b>Licenças</b> mostra cada licença com a validade e o andamento das entregas. Clique em <b>Detalhes</b> para ver tudo de uma empresa ou gerar o calendário em PDF.</li>
+    <li><b>Calendário</b> mostra o mês. Clique num dia para ver as entregas dele.</li>
+    <li><b>＋ Nova licença</b> cadastra uma licença: as datas das condicionantes são calculadas a partir da emissão.</li>
+  </ol>
+  <h4>Cores</h4>
+  <p class="legenda-cores"><span class="tag t-atr">Atrasada</span> <span class="tag t-sem">Nesta semana</span> <span class="tag t-30">Em até 30 dias</span> <span class="tag t-ok">No prazo</span> <span class="tag t-ent">Entregue</span></p>
+  <h4>Atalhos</h4>
+  <p><kbd>/</kbd> busca na agenda · <kbd>1</kbd> a <kbd>4</kbd> trocam de aba · <kbd>N</kbd> nova licença</p>
+  <p class="mut">As marcações ficam salvas neste navegador. Faça um <b>Backup</b> de vez em quando (aba Licenças) e use <b>Restaurar</b> em outro computador.</p>
+</div></dialog>
+
+<!-- nova licença -->
+<dialog id="dAdd"><div class="dh"><div><b>Nova licença</b><small>As datas de entrega são calculadas a partir da emissão</small></div><button class="fechar" type="button" data-fecha aria-label="Fechar">×</button></div>
+<div class="db"><form id="fAdd">
+  <div class="etapa"><span class="num">1</span> Dados da licença</div>
+  <div class="fm">
+    <label class="w">Empresa (interessado)<input id="fNome" required autocomplete="off"></label>
+    <label>CNPJ/CPF<input id="fCnpj" inputmode="numeric"></label>
+    <label>Atividade (CNAE)<input id="fCnae"></label>
+    <label>Tipo da licença<select id="fTipo"><option value="LO">Licença de Operação (LO)</option><option value="LI">Licença de Instalação (LI)</option><option value="LP">Licença Prévia (LP)</option></select></label>
+    <label>Nº da licença<input id="fNum" required placeholder="ex.: 123/2026"></label>
+    <label>Data de emissão<input type="date" id="fEmi" required></label>
+    <label>Data de vencimento<input type="date" id="fVen" required><small class="mut">Preenchida com 2 anos ao escolher a emissão</small></label>
+  </div>
+  <div class="etapa"><span class="num">2</span> Condicionantes com entrega</div>
+  <p class="mut">Use os atalhos para as condicionantes mais comuns ou preencha: nº, o que entregar e a periodicidade.</p>
+  <div class="pre" id="pre"></div>
+  <div class="cr cab" aria-hidden="true"><span>Nº</span><span>O que entregar</span><span>Periodicidade</span><span>Dias / data</span><span></span></div>
+  <div id="cRows"></div>
+  <button type="button" class="btn claro peq" id="bCond">＋ condicionante</button>
+  <label class="check"><input type="checkbox" id="fRen" checked> Incluir o pedido de renovação (120 dias antes do vencimento)</label>
+  <div class="etapa"><span class="num">3</span> Conferir e salvar</div>
+  <div id="prev" class="prev"></div>
+  <div class="rodape-form">
+    <button type="button" class="btn claro" data-fecha>Cancelar</button>
+    <button class="btn" value="0">Salvar</button>
+    <button class="btn" value="1">Salvar e gerar calendário</button>
+  </div>
+</form></div></dialog>
+
+<!-- gerar calendário -->
+<dialog id="dGen"><div class="dh"><div><b>Gerar calendário da licença</b></div><button class="fechar" type="button" data-fecha aria-label="Fechar">×</button></div>
+<div class="db">
+  <label class="mut">Licença<input id="gBusca" list="gLista" placeholder="Digite o nome da empresa…" autocomplete="off"></label>
+  <datalist id="gLista"></datalist>
+  <p class="mut">Abre o calendário (tabela de entregas e calendário mensal) pronto para imprimir. Na janela de impressão escolha "Salvar como PDF" e orientação paisagem.</p>
+  <div class="rodape-form"><button class="btn" id="bGenOk" type="button">Gerar / imprimir PDF</button></div>
+</div></dialog>
+
+<script src="painel.js"></script>
+</body>
+</html>
