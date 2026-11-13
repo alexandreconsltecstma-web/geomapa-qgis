@@ -561,6 +561,12 @@ function desenharSimbolo(ctx, it, x, y, e = 1) {
     ctx.beginPath(); ctx.arc(x + 3 * MM * e, y + 1.8 * MM * e, 1.7 * MM * e, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
     return;
   }
+  if (it.tipo === "marca") {
+    ctx.fillStyle = it.fill; ctx.strokeStyle = "#fff"; ctx.lineWidth = 0.3 * MM;
+    ctx.beginPath(); ctx.moveTo(x + 4 * MM * e, y); ctx.lineTo(x + 6.2 * MM * e, y + 3.6 * MM * e); ctx.lineTo(x + 1.8 * MM * e, y + 3.6 * MM * e);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    return;
+  }
   if (it.tipo === "linha") {
     ctx.strokeStyle = it.stroke; ctx.lineWidth = 0.7 * MM * e; ctx.setLineDash(it.tracejado ? [1.4 * MM, 0.8 * MM] : []);
     ctx.beginPath(); ctx.moveTo(x, y + 1.8 * MM * e); ctx.lineTo(x + 8 * MM * e, y + 1.8 * MM * e); ctx.stroke();
@@ -713,6 +719,7 @@ $("opacidade").addEventListener("input", () => {
   grupoTema.getLayers().forEach((l) => { if (l.getClassName() === "tema") l.setOpacity(Number($("opacidade").value) / 100); });
 });
 $("btn-clima").addEventListener("click", () => comBotao("btn-clima", "Gerando…", exportarClimograma));
+$("tema-opcoes").addEventListener("change", () => { temaCamadas.forEach((l) => l.unset("bbox")); agendarTema(); });
 for (const id of ["raio1", "raio2"]) $(id).addEventListener("change", () => desenhar(true));
 $("mostrar-mun").addEventListener("change", () => desenhar(false));
 $("base").addEventListener("change", aplicarBase);
@@ -723,6 +730,19 @@ $("btn-qgis").addEventListener("click", () => comBotao("btn-qgis", "Montando o p
 $("btn-ajuda").addEventListener("click", () => $("ajuda").showModal());
 
 $("data").value = new Date().toLocaleDateString("pt-BR");
+// vindo do Painel de condicionantes: ?empreendimento=…&cnpj=…&licenca=…
+(() => {
+  const u = new URLSearchParams(location.search);
+  const emp = u.get("empreendimento");
+  if (!emp) return;
+  $("empreendimento").value = emp;
+  $("rotulo").value = emp.replace(/\s*\(.*?\)\s*/g, " ").trim().split(/\s+/).slice(0, 3).join(" ");
+  const sub = [u.get("licenca"), u.get("cnpj") ? `CNPJ ${u.get("cnpj")}` : ""].filter(Boolean).join(" · ");
+  if (sub) $("subtitulo").value = `${emp} – ${sub}`;
+  $("busca").placeholder = "Endereço da empresa (rua, nº, bairro, Arapiraca/AL)";
+  $("busca").focus();
+  $("info-local").textContent = "Dados da licença carregados do Painel. Agora marque o local: busque o endereço, digite as coordenadas, clique no mapa ou carregue o KML.";
+})();
 aplicarBase();
 desenhar(false);
 malhaUFs().catch(() => {});

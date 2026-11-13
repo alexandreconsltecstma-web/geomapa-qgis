@@ -15,7 +15,11 @@
     <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M32 4C21 4 12 13 12 24c0 15 20 36 20 36s20-21 20-36C52 13 43 4 32 4z" fill="currentColor"/><circle cx="32" cy="24" r="8" fill="var(--creme)"/></svg>
     <div><h1>GeoMapa QGIS</h1><p>Mapas de localização, influência, meio físico, clima e ar, prontos para imprimir ou abrir no QGIS</p></div>
   </div>
-  <button id="btn-ajuda" class="link" type="button">Como funciona</button>
+  <nav class="sistema" aria-label="Sistema PA">
+    <a class="link ativo" href="./" aria-current="page">🗺 Mapas</a>
+    <a class="link" href="painel/">📋 Condicionantes</a>
+    <button id="btn-ajuda" class="link" type="button">Como funciona</button>
+  </nav>
 </header>
 
 <main class="app">
@@ -47,7 +51,7 @@
         <label><input type="radio" name="modelo" value="municipio"><span><b>Situação no município</b>Limite municipal do IBGE e o ponto</span></label>
         <p class="grupo">Meio físico</p>
         <label><input type="radio" name="modelo" value="uso"><span><b>Uso e cobertura do solo</b>Sentinel-2, 10 m (2024)</span></label>
-        <label><input type="radio" name="modelo" value="hidrografia"><span><b>Hidrografia</b>Rios, córregos, lagoas e áreas úmidas</span></label>
+        <label><input type="radio" name="modelo" value="hidrografia"><span><b>Hidrografia</b>Base oficial da ANA, distância ao lote e faixa de 30 m</span></label>
         <label><input type="radio" name="modelo" value="relevo"><span><b>Hipsometria</b>Altitude do terreno com sombreamento</span></label>
         <label><input type="radio" name="modelo" value="declividade"><span><b>Declividade</b>Classes de relevo da Embrapa</span></label>
         <label><input type="radio" name="modelo" value="solos"><span><b>Solos</b>Pedologia do IBGE (SiBCS)</span></label>
@@ -57,12 +61,14 @@
         <label><input type="radio" name="modelo" value="precipitacao"><span><b>Precipitação</b>Chuva média anual e climograma</span></label>
         <label><input type="radio" name="modelo" value="temperatura"><span><b>Temperatura</b>Temperatura média anual e climograma</span></label>
         <label><input type="radio" name="modelo" value="ar"><span><b>Qualidade do ar</b>Aerossóis (NASA) e poluentes no ponto</span></label>
-        <p class="grupo">Meio biótico</p>
+        <p class="grupo">Meio biótico e áreas protegidas</p>
         <label><input type="radio" name="modelo" value="biomas"><span><b>Biomas</b>Limites dos biomas do IBGE</span></label>
+        <label><input type="radio" name="modelo" value="protegidas"><span><b>Áreas protegidas</b>Unidades de conservação, terras indígenas e cavernas</span></label>
       </div>
       <div id="bloco-tema" class="tema-bloco" hidden>
         <label>Transparência da camada temática
           <input id="opacidade" type="range" min="20" max="100" step="5" value="75"></label>
+        <div id="tema-opcoes"></div>
         <div id="tema-info" aria-live="polite"></div>
         <button id="btn-clima" type="button" hidden>Baixar climograma (PNG)</button>
       </div>
@@ -128,7 +134,8 @@
   <h3>Fontes dos mapas temáticos</h3>
   <ul class="fontes">
     <li><b>Uso do solo:</b> Esri / Impact Observatory, Sentinel-2 Land Cover 10 m (2024).</li>
-    <li><b>Hidrografia:</b> OpenStreetMap (Overpass API).</li>
+    <li><b>Hidrografia:</b> ANA – Base Hidrográfica Ottocodificada (trechos e massas d'água) e OpenStreetMap. Com o KML do lote, as distâncias são medidas a partir do limite do lote.</li>
+    <li><b>Áreas protegidas:</b> ICMBio (UCs federais e cavernas do CANIE, via INDE); UCs estaduais/municipais e terras indígenas da base da ANA/SNIRH.</li>
     <li><b>Hipsometria e declividade:</b> Mapzen Terrain Tiles (SRTM, ~30 m) e Esri World Hillshade; classes de declividade da Embrapa (1979).</li>
     <li><b>Solos:</b> IBGE, BDiA – Pedologia 1:250.000. <b>Geologia:</b> SGB/CPRM, litoestratigrafia 1:1.000.000.</li>
     <li><b>Clima:</b> CHELSA v2.1 (1981–2010); climograma com ERA5/Copernicus (1991–2020) via Open-Meteo.</li>

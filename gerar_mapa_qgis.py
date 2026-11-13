@@ -111,6 +111,7 @@ def camadas_tema(pasta, t, geo, proj):
     leg = [dict(i, cor=i.get("cor") or i.get("fill")) for i in t.get("legenda", []) if i.get("tipo") != "ponto"]
     for arq in t.get("vetor") or []:
         linha = "linhas" in arq
+        ponto = "pontos" in arq
         lyr = camada(pasta, arq, t["nome"] + (" – cursos d'água" if linha else ""), geo)
         if not lyr:
             continue
@@ -121,10 +122,15 @@ def camadas_tema(pasta, t, geo, proj):
             i["cor"] = rotulos.get(i["rotulo"], i["cor"])
             if linha:
                 i["larg"] = 0.7 if i["rotulo"] == "Rio" else 0.4
-        categorias(lyr, "rotulo", itens, linha)
+        if ponto:
+            cats = [QgsRendererCategory(i["rotulo"], QgsMarkerSymbol.createSimple({"name": "triangle", "color": i["cor"], "outline_color": "white",
+                                                                                   "size": "3.2"}), i["rotulo"]) for i in itens]
+            lyr.setRenderer(QgsCategorizedSymbolRenderer("rotulo", cats))
+        else:
+            categorias(lyr, "rotulo", itens, linha)
         if t["id"] == "geologia":
             rotulo(lyr, '"sigla"', 6.5, "#222222")
-        lyr.setOpacity(t.get("opacidade", 0.8) if not linha else 1.0)
+        lyr.setOpacity(t.get("opacidade", 0.8) if not (linha or ponto) else 1.0)
         no_mapa.append(lyr)
         na_legenda.append(lyr)
     if t.get("raster"):

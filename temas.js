@@ -269,108 +269,218 @@ const TEMAS = {
   },
 
   hidrografia: {
-    nome: "Hidrografia", titulo: "Hidrografia no entorno do empreendimento", base: "claro", escala: 1500, dinamico: true,
-    fonte: "© colaboradores do OpenStreetMap (cursos d'água e massas d'água, via Overpass API)",
-    vetorial: true,
+    nome: "Hidrografia", titulo: "Hidrografia no entorno do empreendimento", base: "claro", escala: 1500, dinamico: true, vetorial: true,
+    fonte: "ANA – Base Hidrográfica Ottocodificada (trechos de drenagem e massas d'água, SNIRH) e © colaboradores do OpenStreetMap (detalhes)",
+    opcoes: `<label class="check"><input type="checkbox" id="opOSM" checked> Completar com córregos, canais e áreas úmidas do OpenStreetMap</label>
+             <label class="check"><input type="checkbox" id="opFaixa"> Mostrar faixa marginal de 30 m (referência para APP)</label>`,
     camadas() {
       const estilos = {};
-      return [new ol.layer.Vector({
+      const faixa = new ol.layer.Vector({ className: "tema", source: new ol.source.Vector(), opacity: 0.45,
+        style: new ol.style.Style({ fill: new ol.style.Fill({ color: "#f4a3a3" }) }) });
+      faixa.set("papel", "faixa");
+      const hidro = new ol.layer.Vector({
         className: "tema", source: new ol.source.Vector(), declutter: false,
         style: (f) => {
-          const t = f.get("classe");
-          const k = `${t}|${K}`;
+          const c = HIDRO_CLASSES.find((x) => x.classe === f.get("classe")) || HIDRO_CLASSES[1];
+          const larg = f.get("larg") || c.larg;
+          const k = `${c.classe}|${larg}|${K}`;
           if (!estilos[k]) {
-            const c = HIDRO_CLASSES.find((x) => x.classe === t) || HIDRO_CLASSES[1];
             estilos[k] = new ol.style.Style({
               fill: c.tipo === "area" ? new ol.style.Fill({ color: c.fill }) : undefined,
-              stroke: new ol.style.Stroke({ color: c.stroke, width: c.larg * K, lineDash: c.tracejado ? [6 * K, 4 * K] : undefined }),
+              stroke: new ol.style.Stroke({ color: c.stroke, width: larg * K, lineDash: c.tracejado ? [6 * K, 4 * K] : undefined }),
             });
           }
           const nome = f.get("nome");
-          if (!nome || f.get("tipo") !== "linha" || mapa.getView().getResolution() > 15 * K) return estilos[k];
+          if (!nome || c.tipo !== "linha" || mapa.getView().getResolution() > 25 * K) return estilos[k];
           return [estilos[k], new ol.style.Style({
-            text: new ol.style.Text({ text: nome, placement: "line", font: `italic ${Math.round(11 * K)}px Arial`,
+            text: new ol.style.Text({ text: nome, placement: "line", font: `italic ${Math.round(11 * K)}px Arial`, repeat: 400 * K,
               fill: new ol.style.Fill({ color: "#1f4e79" }), stroke: new ol.style.Stroke({ color: "#fff", width: 3 * K }) }),
           })];
         },
-      })];
+      });
+      hidro.set("papel", "hidro");
+      return [faixa, hidro];
     },
     async atualizar(camadas) {
+      const [faixa, hidro] = camadas;
       const bb = vistaBBox(0.1);
       const larguraKm = turf.distance([bb[0], bb[1]], [bb[2], bb[1]]);
-      if (larguraKm > 40) { temaEstado.aviso = "Aproxime o mapa (menos de 40 km de largura) para carregar a hidrografia."; return; }
-      const chave = bb.map((v) => v.toFixed(3)).join(",");
-      if (camadas[0].get("bbox") && contem(camadas[0].get("bbox"), bb)) return;
-      const q = `[out:json][timeout:40];(way["waterway"~"^(river|stream|canal|ditch|drain|brook)$"](${bb[1]},${bb[0]},${bb[3]},${bb[2]});` +
-        `way["natural"~"^(water|wetland)$"](${bb[1]},${bb[0]},${bb[3]},${bb[2]});way["waterway"="riverbank"](${bb[1]},${bb[0]},${bb[3]},${bb[2]});` +
-        `relation["natural"="water"](${bb[1]},${bb[0]},${bb[3]},${bb[2]}););out geom;`;
-      let r = null, ultimoErro;
-      for (const srv of ["https://overpass-api.de/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
-                         "https://overpass.private.coffee/api/interpreter"]) {
-        const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 30000);
-        try {
-          const resp = await fetch(`${srv}?data=${encodeURIComponent(q)}`, { signal: ctl.signal });
-          if (!resp.ok) throw new Error(`${resp.status} ${srv}`);
-          r = await resp.json();
-          break;
-        } catch (e) { ultimoErro = e; } finally { clearTimeout(tm); }
-      }
-      if (!r) throw new Error("os servidores do OpenStreetMap (Overpass) não responderam");
+      if (larguraKm > 60) { temaEstado.aviso = "Aproxime o mapa (menos de 60 km de largura) para carregar a hidrografia."; return; }
+      const comOSM = $("opOSM")?.checked !== false, comFaixa = !!$("opFaixa")?.checked;
+      const chave = `${comOSM}|${comFaixa}`;
+      if (hidro.get("bbox") && contem(hidro.get("bbox"), bb) && hidro.get("chave") === chave) return;
+      const [trechos, massas, osm] = await Promise.all([
+        arcgisGeo(ANA_BASE, 1, bb, "TDR_NM_COMPLETO,TDR_DS_DOMINIALIDADE,TDR_AR_MONTANTE", "TDR_DS_DOMINIALIDADE <> 'Linha de Costa'").catch(() => null),
+        arcgisGeo(ANA_BASE, 3, bb, "ESP_NM_RESERVATORIO,ESP_TP_RESERVATORIO,ESP_DS_DOMINIO").catch(() => null),
+        comOSM && larguraKm <= 40 ? hidroOSM(bb).catch(() => null) : Promise.resolve([]),
+      ]);
+      if (!trechos && !massas && !osm) throw new Error("a ANA e o OpenStreetMap não responderam");
       const feats = [];
-      for (const el of r.elements) {
-        const tg = el.tags || {};
-        const wet = tg.natural === "wetland";
-        const nome = tg.name || "";
-        if (el.type === "way" && el.geometry) {
-          const co = el.geometry.map((g) => [g.lon, g.lat]);
-          const fechado = co.length > 3 && co[0][0] === co[co.length - 1][0] && co[0][1] === co[co.length - 1][1];
-          if ((tg.natural || tg.waterway === "riverbank") && fechado)
-            feats.push(turf.polygon([co], { classe: wet ? (tg.wetland === "mangrove" ? "mangue" : "alagado") : "agua", nome, tipo: "area" }));
-          else if (tg.waterway) {
-            const cl = tg.waterway === "river" ? "rio" : (tg.waterway === "canal" || tg.waterway === "ditch" || tg.waterway === "drain") ? "canal" : "corrego";
-            feats.push(turf.lineString(co, { classe: cl, nome, tipo: "linha", intermitente: tg.intermittent === "yes" }));
-          }
-        } else if (el.type === "relation" && el.members) {
-          for (const m of el.members) {
-            if (m.role !== "outer" || !m.geometry) continue;
-            const co = m.geometry.map((g) => [g.lon, g.lat]);
-            if (co.length > 3 && co[0][0] === co[co.length - 1][0] && co[0][1] === co[co.length - 1][1])
-              feats.push(turf.polygon([co], { classe: "agua", nome, tipo: "area" }));
-          }
-        }
+      for (const f of trechos || []) {
+        const p = f.properties, nome = (p.TDR_NM_COMPLETO || "").trim(), dom = p.TDR_DS_DOMINIALIDADE || "";
+        const area = Number(p.TDR_AR_MONTANTE) || 0;
+        const larg = area > 5000 ? 3.4 : area > 500 ? 2.6 : area > 50 ? 1.9 : 1.3;
+        const classe = /federal/i.test(dom) ? "ana_fed" : nome ? "ana_est" : "ana_sn";
+        for (const g of turf.flatten(f).features) feats.push(turf.feature(g.geometry, { classe, nome, dominio: dom, area_km2: area, larg, fonte: "ANA" }));
       }
-      const src = camadas[0].getSource();
-      src.clear();
-      src.addFeatures(feats.map((f) => fmtGeo.readFeature(f)));
-      camadas[0].set("bbox", bb);
+      for (const f of massas || []) {
+        const p = f.properties;
+        for (const g of turf.flatten(f).features)
+          feats.push(turf.feature(g.geometry, { classe: "ana_massa", nome: (p.ESP_NM_RESERVATORIO || "").trim(), dominio: p.ESP_DS_DOMINIO || "",
+                                               tipo_reserv: p.ESP_TP_RESERVATORIO || "", fonte: "ANA" }));
+      }
+      feats.push(...(osm || []));
+      hidro.getSource().clear();
+      hidro.getSource().addFeatures(feats.map((f) => fmtGeo.readFeature(f)));
+      hidro.set("bbox", bb); hidro.set("chave", chave);
+      // faixa marginal de referência (30 m) perto do empreendimento
+      faixa.getSource().clear();
+      if (comFaixa && estado.ponto) {
+        const perto = turf.buffer(turf.point(estado.ponto), Math.max(1.5, larguraKm / 2), { units: "kilometers" });
+        const bufs = [];
+        for (const f of feats) {
+          if (f.properties.classe === "alagado" || f.properties.classe === "mangue") continue;
+          try { if (!turf.booleanIntersects(f, perto)) continue; const b = turf.buffer(f, 30, { units: "meters", steps: 6 }); if (b) bufs.push(b); } catch (e) { /* geometria inválida */ }
+        }
+        faixa.getSource().addFeatures(bufs.map((b) => fmtGeo.readFeature(b)));
+      }
       temaEstado.vetor = turf.featureCollection(feats.map((f) => {
         const c = HIDRO_CLASSES.find((x) => x.classe === f.properties.classe);
         return turf.feature(f.geometry, { ...f.properties, rotulo: c.rotulo, cor: c.tipo === "area" ? c.fill : c.stroke });
       }));
-      temaEstado.aviso = feats.length ? "" : "Nenhum curso ou corpo d'água mapeado no OpenStreetMap neste enquadramento.";
-      void chave;
+      for (const b of faixa.getSource().getFeatures())  // a faixa também vai para o pacote do QGIS
+        temaEstado.vetor.features.unshift(turf.feature(fmtGeo.writeFeatureObject(b).geometry, { classe: "faixa30", rotulo: "Faixa marginal de 30 m (referência)", cor: "#f4a3a3" }));
+      const falhas = [!trechos && "trechos da ANA", !massas && "massas d'água da ANA", comOSM && larguraKm <= 40 && !osm && "OpenStreetMap"].filter(Boolean);
+      temaEstado.aviso = falhas.length ? `Sem resposta de: ${falhas.join(", ")}. O mapa mostra o que carregou; mova o mapa para tentar de novo.`
+        : feats.length ? "" : "Nenhum curso ou corpo d'água mapeado neste enquadramento.";
     },
     async legenda(camadas) {
-      const presentes = new Set(camadas[0].getSource().getFeatures().map((f) => f.get("classe")));
-      return HIDRO_CLASSES.filter((c) => presentes.has(c.classe))
+      const [faixa, hidro] = camadas;
+      const presentes = new Set(hidro.getSource().getFeatures().map((f) => f.get("classe")));
+      const it = HIDRO_CLASSES.filter((c) => presentes.has(c.classe))
         .map((c) => ({ tipo: c.tipo === "area" ? "area" : "linha", fill: c.fill, stroke: c.stroke, rotulo: c.rotulo, tracejado: c.tracejado }));
+      if (faixa.getSource().getFeatures().length) it.push({ tipo: "area", fill: "rgba(244,163,163,0.55)", stroke: "#e07a7a", rotulo: "Faixa marginal de 30 m (referência)" });
+      return it;
     },
     async info(p, camadas) {
-      const pt = turf.point(p);
-      let melhor = null;
-      for (const f of camadas[0].getSource().getFeatures()) {
+      const hidro = camadas[1];
+      const ref = estado.lote || turf.point(p);
+      const daRef = estado.lote ? "do lote" : "do ponto";
+      let rio = null, massa = null, qualquer = null;
+      for (const f of hidro.getSource().getFeatures()) {
         const g = fmtGeo.writeFeatureObject(f);
-        const linha = g.geometry.type === "LineString" ? g : turf.polygonToLine(g);
-        const linhas = linha.type === "FeatureCollection" ? linha.features : [linha];
-        for (const l of linhas) {
-          if (!l.geometry || l.geometry.type !== "LineString") continue;
-          const d = turf.pointToLineDistance(pt, l, { units: "meters" });
-          if (!melhor || d < melhor.d) melhor = { d, nome: g.properties.nome, classe: g.properties.classe };
-        }
+        const d = distanciaM(ref, g);
+        const pr = g.properties;
+        if (!qualquer || d < qualquer.d) qualquer = { d, pr };
+        if (pr.classe === "ana_massa" || (pr.classe === "agua" && pr.nome)) { if (!massa || d < massa.d) massa = { d, pr }; }
+        else if (pr.nome && /^(ana_fed|ana_est|rio|corrego)$/.test(pr.classe)) { if (!rio || d < rio.d) rio = { d, pr }; }
       }
-      if (!melhor) return [];
-      const c = HIDRO_CLASSES.find((x) => x.classe === melhor.classe);
-      return [["Corpo hídrico mais próximo", `${melhor.nome || c.rotulo.toLowerCase()} – a cerca de ${fmtN(Math.round(melhor.d / 5) * 5)} m`]];
+      const m = (d) => (d < 1 ? "dentro ou junto" : `a cerca de ${fmtN(d < 1000 ? Math.round(d / 5) * 5 : Math.round(d / 50) * 50)} m`);
+      const dom = (pr) => (pr.dominio && !/linha de costa/i.test(pr.dominio) ? ` (domínio ${pr.dominio.toLowerCase()})` : "");
+      const linhas = [];
+      if (rio) linhas.push(["Curso d'água mais próximo", `${rio.pr.nome}${dom(rio.pr)} – ${m(rio.d)} ${daRef}`]);
+      if (massa) linhas.push(["Massa d'água mais próxima", `${massa.pr.nome || "sem nome"} – ${m(massa.d)} ${daRef}`]);
+      if (qualquer && (!rio || qualquer.d < rio.d - 1) && qualquer.d < 500) {
+        const c = HIDRO_CLASSES.find((x) => x.classe === qualquer.pr.classe);
+        linhas.push(["Drenagem mais próxima", `${qualquer.pr.nome || c.rotulo.replace(/\s*\(.*\)$/, "").toLowerCase()} – ${m(qualquer.d)} ${daRef}`]);
+      }
+      if (qualquer && qualquer.d < 30) linhas.push(["Atenção", `há drenagem a menos de 30 m ${daRef}: verificar APP (Lei 12.651/2012, art. 4º) em campo`]);
+      try {
+        const [rh, ob] = await Promise.all([arcgisPonto(ANA_BASE, 8, p, "RHI_NM"), arcgisPonto(ANA_BASE, 2, p, "ACH_CD,ACH_NU_NIVEL_OTTO")]);
+        if (rh) linhas.push(["Região hidrográfica", rh.RHI_NM.replace(/^Região Hidrográfica\s*/i, "")]);
+        if (ob) linhas.push(["Ottobacia (ANA)", `${ob.ACH_CD} (nível ${ob.ACH_NU_NIVEL_OTTO})`]);
+      } catch (e) { /* informação opcional */ }
+      return linhas;
+    },
+  },
+
+  protegidas: {
+    nome: "Áreas protegidas", titulo: "Áreas protegidas na região do empreendimento", base: "claro", escala: 25000, raio: true, dinamico: true, vetorial: true,
+    fonte: "ICMBio – UCs federais e cavernas (CANIE), via INDE; UCs estaduais e municipais e terras indígenas: ANA/SNIRH (bases MMA e FUNAI)",
+    opacidade: 0.6,
+    camadas() {
+      const estilos = {};
+      return [new ol.layer.Vector({
+        className: "tema", source: new ol.source.Vector(), declutter: true,
+        style: (f) => {
+          const c = PROT_CLASSES.find((x) => x.classe === f.get("classe"));
+          const k = `${c.classe}|${K}`;
+          if (!estilos[k]) {
+            estilos[k] = c.tipo === "ponto"
+              ? new ol.style.Style({ image: new ol.style.RegularShape({ points: 3, radius: 6 * K, fill: new ol.style.Fill({ color: c.fill }),
+                  stroke: new ol.style.Stroke({ color: "#fff", width: 1.2 * K }) }) })
+              : new ol.style.Style({ fill: new ol.style.Fill({ color: c.fill }), stroke: new ol.style.Stroke({ color: c.stroke, width: 1.6 * K }) });
+          }
+          if (c.tipo === "ponto" || mapa.getView().getResolution() > 120 * K) return estilos[k];
+          return [estilos[k], new ol.style.Style({ text: new ol.style.Text({ text: f.get("nome"), font: `bold ${Math.round(10.5 * K)}px Arial`,
+            overflow: false, fill: new ol.style.Fill({ color: c.stroke }), stroke: new ol.style.Stroke({ color: "#fff", width: 3 * K }) }) })];
+        },
+      })];
+    },
+    async atualizar(camadas) {
+      const bb = vistaBBox(0.25);
+      if (bb[2] - bb[0] > 6) { temaEstado.aviso = "Aproxime o mapa (menos de 6° de largura) para carregar as áreas protegidas."; return; }
+      if (camadas[0].get("bbox") && contem(camadas[0].get("bbox"), bb)) return;
+      const [ucf, ucs, tis, cav] = await Promise.all([
+        wfsINDE("ICMBio:limiteucsfederais_a", bb).catch(() => null),
+        arcgisGeo(ANA_BASE, 6, bb, "UNC_NM,UNC_CA,UNC_GP,UNC_DS_ESFERA,UNC_AA_CRIACAO", "UNC_DS_ESFERA <> 'Federal'").catch(() => null),
+        arcgisGeo(ANA_BASE, 7, bb, "TIN_NM,TIN_DS_GRUPO_ETNICO,TIN_DS_SITUACAO_JURIDICA").catch(() => null),
+        wfsINDE("ICMBio:canie_052026_p", bb).catch(() => null),
+      ]);
+      if (!ucf && !ucs && !tis && !cav) throw new Error("ICMBio e ANA não responderam");
+      const feats = [];
+      for (const f of ucf || []) {
+        const p = f.properties;
+        feats.push(turf.feature(f.geometry, { classe: p.grupouc === "PI" ? "uc_pi" : "uc_us", nome: titulo(p.nomeuc || ""), categoria: p.categoria_ || "",
+          esfera: "Federal", ato: p.criacaoato || "", grupo: p.grupouc || "" }));
+      }
+      for (const f of ucs || []) {
+        const p = f.properties;
+        feats.push(turf.feature(f.geometry, { classe: p.UNC_GP === "PI" ? "uc_pi" : "uc_us", nome: titulo(p.UNC_NM || ""), categoria: p.UNC_CA || "",
+          esfera: p.UNC_DS_ESFERA || "", ato: "", grupo: p.UNC_GP || "" }));
+      }
+      for (const f of tis || []) {
+        const p = f.properties;
+        feats.push(turf.feature(f.geometry, { classe: "ti", nome: `TI ${p.TIN_NM || ""}`.trim(), categoria: "Terra Indígena", esfera: p.TIN_DS_SITUACAO_JURIDICA || "" }));
+      }
+      for (const f of cav || []) {
+        const p = f.properties;
+        for (const g of turf.flatten(f).features) feats.push(turf.feature(g.geometry, { classe: "caverna", nome: p.nome || "Caverna", categoria: "Cavidade natural (CANIE)", esfera: p.municipio || "" }));
+      }
+      camadas[0].getSource().clear();
+      camadas[0].getSource().addFeatures(feats.map((f) => fmtGeo.readFeature(f)));
+      camadas[0].set("bbox", bb);
+      temaEstado.vetor = turf.featureCollection(feats.map((f) => {
+        const c = PROT_CLASSES.find((x) => x.classe === f.properties.classe);
+        return turf.feature(f.geometry, { ...f.properties, rotulo: c.rotulo, cor: c.fill });
+      }));
+      const falhas = [!ucf && "UCs federais (ICMBio)", !ucs && "UCs estaduais/municipais (ANA)", !tis && "terras indígenas", !cav && "cavernas"].filter(Boolean);
+      temaEstado.aviso = falhas.length ? `Sem resposta de: ${falhas.join(", ")}.` : feats.length ? "" : "Nenhuma área protegida ou caverna cadastrada neste enquadramento.";
+    },
+    async legenda(camadas) {
+      const pres = new Set(camadas[0].getSource().getFeatures().map((f) => f.get("classe")));
+      return PROT_CLASSES.filter((c) => pres.has(c.classe)).map((c) => ({ tipo: c.tipo === "ponto" ? "marca" : "area", fill: c.fill, stroke: c.stroke, rotulo: c.rotulo }));
+    },
+    async info(p, camadas) {
+      const ref = estado.lote || turf.point(p);
+      const daRef = estado.lote ? "do lote" : "do ponto";
+      let uc = null, ti = null, cav = null;
+      for (const f of camadas[0].getSource().getFeatures()) {
+        const g = fmtGeo.writeFeatureObject(f), c = g.properties.classe;
+        const d = distanciaM(ref, g);
+        if (c === "caverna") { if (!cav || d < cav.d) cav = { d, pr: g.properties }; }
+        else if (c === "ti") { if (!ti || d < ti.d) ti = { d, pr: g.properties }; }
+        else if (!uc || d < uc.d) uc = { d, pr: g.properties };
+      }
+      const km = (d) => (d < 1 ? `${daRef.replace("do ", "o ")} está dentro` : d < 1000 ? `a ${fmtN(Math.round(d / 10) * 10)} m ${daRef}` : `a ${fmtN(d / 1000, 1)} km ${daRef}`);
+      const l = [];
+      if (uc) l.push(["UC mais próxima", `${uc.pr.nome} (${uc.pr.categoria}, ${uc.pr.esfera.toLowerCase()}) – ${km(uc.d)}`]);
+      if (uc && uc.d <= 3000) l.push(["Atenção", "a menos de 3 km de UC: verificar zona de amortecimento e ciência do órgão gestor (Res. CONAMA 428/2010)"]);
+      if (ti) l.push(["Terra indígena mais próxima", `${ti.pr.nome} – ${km(ti.d)}`]);
+      if (cav) l.push(["Caverna mais próxima (CANIE)", `${cav.pr.nome} – ${km(cav.d)}`]);
+      if (cav && cav.d <= 250) l.push(["Atenção", "caverna a menos de 250 m: área de influência provisória (Res. CONAMA 347/2004)"]);
+      if (!l.length) l.push(["Áreas protegidas", "nenhuma no enquadramento atual"]);
+      return l;
     },
   },
 
@@ -643,13 +753,131 @@ const TEMAS = {
 };
 
 const HIDRO_CLASSES = [
-  { classe: "rio", rotulo: "Rio", tipo: "linha", stroke: "#1f78b4", larg: 2.6 },
-  { classe: "corrego", rotulo: "Córrego, riacho ou canal natural", tipo: "linha", stroke: "#3a8fd6", larg: 1.4 },
-  { classe: "canal", rotulo: "Canal ou vala de drenagem", tipo: "linha", stroke: "#5aa9e6", larg: 1.2, tracejado: true },
-  { classe: "agua", rotulo: "Massa d'água (lago, lagoa, represa, rio largo)", tipo: "area", fill: "rgba(166,206,227,0.9)", stroke: "#3a8fd6", larg: 0.8 },
-  { classe: "alagado", rotulo: "Área úmida ou alagável", tipo: "area", fill: "rgba(178,223,219,0.75)", stroke: "#4f9e95", larg: 0.6 },
-  { classe: "mangue", rotulo: "Manguezal", tipo: "area", fill: "rgba(122,135,198,0.6)", stroke: "#4a568f", larg: 0.6 },
+  { classe: "ana_fed", rotulo: "Rio de domínio federal (ANA)", tipo: "linha", stroke: "#08519c", larg: 3 },
+  { classe: "ana_est", rotulo: "Rio ou riacho com nome (ANA)", tipo: "linha", stroke: "#2171b5", larg: 2 },
+  { classe: "ana_sn", rotulo: "Curso d'água sem nome (ANA)", tipo: "linha", stroke: "#5b9fd1", larg: 1.3 },
+  { classe: "ana_massa", rotulo: "Massa d'água – lagoa, açude, represa (ANA)", tipo: "area", fill: "rgba(158,202,225,0.9)", stroke: "#2171b5", larg: 0.8 },
+  { classe: "rio", rotulo: "Rio (OpenStreetMap)", tipo: "linha", stroke: "#3f8fd0", larg: 1.6 },
+  { classe: "corrego", rotulo: "Córrego ou riacho (OpenStreetMap)", tipo: "linha", stroke: "#74a9cf", larg: 1.1 },
+  { classe: "canal", rotulo: "Canal ou vala de drenagem (OpenStreetMap)", tipo: "linha", stroke: "#7fb3dd", larg: 1, tracejado: true },
+  { classe: "agua", rotulo: "Lago, lagoa ou açude (OpenStreetMap)", tipo: "area", fill: "rgba(186,220,240,0.85)", stroke: "#74a9cf", larg: 0.6 },
+  { classe: "alagado", rotulo: "Área úmida ou alagável (OpenStreetMap)", tipo: "area", fill: "rgba(178,223,219,0.75)", stroke: "#4f9e95", larg: 0.6 },
+  { classe: "mangue", rotulo: "Manguezal (OpenStreetMap)", tipo: "area", fill: "rgba(122,135,198,0.6)", stroke: "#4a568f", larg: 0.6 },
 ];
+
+const PROT_CLASSES = [
+  { classe: "uc_pi", rotulo: "Unidade de conservação – proteção integral", tipo: "area", fill: "rgba(35,139,69,0.45)", stroke: "#1b6b3a" },
+  { classe: "uc_us", rotulo: "Unidade de conservação – uso sustentável", tipo: "area", fill: "rgba(166,206,57,0.45)", stroke: "#5d7f16" },
+  { classe: "ti", rotulo: "Terra indígena", tipo: "area", fill: "rgba(217,142,73,0.45)", stroke: "#8b4513" },
+  { classe: "caverna", rotulo: "Caverna cadastrada (CANIE)", tipo: "ponto", fill: "#6d4c41", stroke: "#3e2723" },
+];
+
+/* ── serviços oficiais (ANA/SNIRH e INDE) ───────────────────────────── */
+
+const ANA_BASE = "https://www.snirh.gov.br/arcgis/rest/services/IG/Servicos_Base_IG_v6/MapServer";
+
+async function jsonTempo(url, ms = 30000) {
+  const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), ms);
+  try {
+    const r = await fetch(url, { signal: ctl.signal });
+    if (!r.ok) throw new Error(`${r.status}`);
+    return await r.json();
+  } finally { clearTimeout(tm); }
+}
+
+async function arcgisGeo(base, camada, bb, campos, where = "1=1") {
+  const u = `${base}/${camada}/query?` + new URLSearchParams({ where, geometry: bb.map((v) => v.toFixed(5)).join(","),
+    geometryType: "esriGeometryEnvelope", inSR: "4326", spatialRel: "esriSpatialRelIntersects", outFields: campos,
+    returnGeometry: "true", outSR: "4326", geometryPrecision: "6", f: "geojson" });
+  const r = await jsonTempo(u);
+  if (r.error) throw new Error(r.error.message || "erro no serviço");
+  return (r.features || []).filter((f) => f.geometry);
+}
+
+async function arcgisPonto(base, camada, p, campos) {
+  const u = `${base}/${camada}/query?` + new URLSearchParams({ geometry: `${p[0]},${p[1]}`, geometryType: "esriGeometryPoint", inSR: "4326",
+    spatialRel: "esriSpatialRelIntersects", outFields: campos, returnGeometry: "false", f: "json" });
+  const r = await jsonTempo(u, 20000);
+  return r.features && r.features[0] ? r.features[0].attributes : null;
+}
+
+async function wfsINDE(tipo, bb) {
+  const u = "https://geoservicos.inde.gov.br/geoserver/ows?" + new URLSearchParams({ service: "WFS", version: "2.0.0", request: "GetFeature",
+    typeNames: tipo, outputFormat: "application/json", srsName: "EPSG:4326", count: "2000",
+    bbox: `${bb[1]},${bb[0]},${bb[3]},${bb[2]},urn:ogc:def:crs:EPSG::4326` });
+  const r = await jsonTempo(u, 40000);
+  return (r.features || []).filter((f) => f.geometry);
+}
+
+async function hidroOSM(bb) {
+      const q = `[out:json][timeout:40];(way["waterway"~"^(river|stream|canal|ditch|drain|brook)$"](${bb[1]},${bb[0]},${bb[3]},${bb[2]});` +
+        `way["natural"~"^(water|wetland)$"](${bb[1]},${bb[0]},${bb[3]},${bb[2]});way["waterway"="riverbank"](${bb[1]},${bb[0]},${bb[3]},${bb[2]});` +
+        `relation["natural"="water"](${bb[1]},${bb[0]},${bb[3]},${bb[2]}););out geom;`;
+      let r = null, ultimoErro;
+      for (const srv of ["https://overpass-api.de/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+                         "https://overpass.private.coffee/api/interpreter"]) {
+        const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 30000);
+        try {
+          const resp = await fetch(`${srv}?data=${encodeURIComponent(q)}`, { signal: ctl.signal });
+          if (!resp.ok) throw new Error(`${resp.status} ${srv}`);
+          r = await resp.json();
+          break;
+        } catch (e) { ultimoErro = e; } finally { clearTimeout(tm); }
+      }
+      if (!r) throw new Error("os servidores do OpenStreetMap (Overpass) não responderam");
+      const feats = [];
+      for (const el of r.elements) {
+        const tg = el.tags || {};
+        const wet = tg.natural === "wetland";
+        const nome = tg.name || "";
+        if (el.type === "way" && el.geometry) {
+          const co = el.geometry.map((g) => [g.lon, g.lat]);
+          const fechado = co.length > 3 && co[0][0] === co[co.length - 1][0] && co[0][1] === co[co.length - 1][1];
+          if ((tg.natural || tg.waterway === "riverbank") && fechado)
+            feats.push(turf.polygon([co], { classe: wet ? (tg.wetland === "mangrove" ? "mangue" : "alagado") : "agua", nome, tipo: "area" }));
+          else if (tg.waterway) {
+            const cl = tg.waterway === "river" ? "rio" : (tg.waterway === "canal" || tg.waterway === "ditch" || tg.waterway === "drain") ? "canal" : "corrego";
+            feats.push(turf.lineString(co, { classe: cl, nome, tipo: "linha", intermitente: tg.intermittent === "yes" }));
+          }
+        } else if (el.type === "relation" && el.members) {
+          for (const m of el.members) {
+            if (m.role !== "outer" || !m.geometry) continue;
+            const co = m.geometry.map((g) => [g.lon, g.lat]);
+            if (co.length > 3 && co[0][0] === co[co.length - 1][0] && co[0][1] === co[co.length - 1][1])
+              feats.push(turf.polygon([co], { classe: "agua", nome, tipo: "area" }));
+          }
+        }
+      }
+      return feats;
+}
+
+// Menor distância (m) entre a referência (ponto ou polígono do lote) e uma feição qualquer.
+function distanciaM(ref, g) {
+  try { if (turf.booleanIntersects(ref, g)) return 0; } catch (e) { /* segue com o cálculo */ }
+  const linhas = (f) => {
+    if (/Point/.test(f.geometry.type)) return [];
+    return turf.flatten(/Polygon/.test(f.geometry.type) ? turf.polygonToLine(f) : f).features.filter((x) => x.geometry && /LineString/.test(x.geometry.type))
+      .flatMap((x) => (x.geometry.type === "MultiLineString" ? turf.flatten(x).features : [x]));
+  };
+  const vertices = (f) => turf.explode(f).features;
+  const lg = linhas(g), lr = linhas(ref);
+  let min = Infinity;
+  for (const v of vertices(ref)) {
+    if (lg.length) for (const l of lg) min = Math.min(min, turf.pointToLineDistance(v, l, { units: "meters" }));
+    else for (const w of vertices(g)) min = Math.min(min, turf.distance(v, w, { units: "meters" }));
+  }
+  if (lr.length) {
+    const vs = vertices(g);
+    const passo = Math.max(1, Math.floor(vs.length / 1500));
+    for (let i = 0; i < vs.length; i += passo) for (const l of lr) min = Math.min(min, turf.pointToLineDistance(vs[i], l, { units: "meters" }));
+  }
+  return min;
+}
+
+function titulo(n) {
+  const peq = new Set(["de", "da", "do", "das", "dos", "e"]);
+  return n.toLowerCase().split(/\s+/).map((w, i) => (i && peq.has(w) ? w : w.charAt(0).toUpperCase() + w.slice(1))).join(" ");
+}
 
 function climaPNG(id, nome, titulo, rotulo, rotuloInfo) {
   return {
@@ -794,6 +1022,7 @@ function ativarTema(id) {
   Object.assign(temaEstado, { id: TEMAS[id] ? id : null, legenda: [], info: [], quadro: null, vetor: null, aviso: "",
                               quebras: null, coresHipso: null });
   $("bloco-tema").hidden = !TEMAS[id];
+  $("tema-opcoes").innerHTML = (TEMAS[id] && TEMAS[id].opcoes) || "";
   if (!TEMAS[id]) { mostrarTema(); return; }
   const t = TEMAS[id];
   $("opacidade").value = Math.round((t.opacidade ?? 0.8) * 100);
@@ -892,7 +1121,7 @@ function extensaoTema(id) {
     if (uf) return fmtGeo.readFeature(uf).getGeometry().getExtent();
     return ol.extent.buffer(ol.extent.boundingExtent([ol.proj.fromLonLat(estado.ponto)]), 250000);
   }
-  if (t.escala >= 10000 && estado.municipio)
+  if (t.escala >= 10000 && estado.municipio && !t.raio)
     return fmtGeo.readFeature(estado.municipio.feature).getGeometry().getExtent();
   const fator = 1 / Math.cos((estado.ponto[1] * Math.PI) / 180);
   return ol.extent.buffer(ol.extent.boundingExtent([ol.proj.fromLonLat(estado.ponto)]), t.escala * fator);
@@ -942,7 +1171,9 @@ async function arquivosTemaQGIS(zip) {
     const paraQGIS = (f) => turf.feature(f.geometry, { ...f.properties, cor: corHex(f.properties.cor) });
     const linhas = fs.filter((f) => /LineString/.test(f.geometry.type)).map(paraQGIS);
     const areas = fs.filter((f) => /Polygon/.test(f.geometry.type)).map(paraQGIS);
+    const pontos = fs.filter((f) => /Point/.test(f.geometry.type)).map(paraQGIS);
     cfg.vetor = [];
+    if (pontos.length) { zip.file("camadas/tema_pontos.geojson", JSON.stringify(turf.featureCollection(pontos))); cfg.vetor.push("camadas/tema_pontos.geojson"); }
     if (areas.length) { zip.file("camadas/tema_areas.geojson", JSON.stringify(turf.featureCollection(areas))); cfg.vetor.push("camadas/tema_areas.geojson"); }
     if (linhas.length) { zip.file("camadas/tema_linhas.geojson", JSON.stringify(turf.featureCollection(linhas))); cfg.vetor.push("camadas/tema_linhas.geojson"); }
   } else {

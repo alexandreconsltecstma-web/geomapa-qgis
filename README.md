@@ -5,6 +5,9 @@ Site gratuito para gerar mapas de **localização**, **áreas de influência (AD
 
 **Acesse:** https://alexandreconsltecstma-web.github.io/geomapa-qgis/
 
+**Painel de condicionantes (PA Consultoria):** https://alexandreconsltecstma-web.github.io/geomapa-qgis/painel/ – dashboard,
+agenda de entregas, licenças e calendário; o botão "Fazer mapas" de cada licença abre o GeoMapa com os dados da empresa.
+
 ## O que faz
 
 - Marca o local por endereço, coordenadas, clique no mapa ou arquivo **KML, KMZ ou GeoJSON** (ponto e lote).
@@ -12,7 +15,10 @@ Site gratuito para gerar mapas de **localização**, **áreas de influência (AD
   (limite municipal do IBGE identificado a partir do ponto).
 - Mapas temáticos, com legenda das classes presentes e o valor no ponto:
   - **Uso e cobertura do solo** – Esri / Impact Observatory, Sentinel-2 10 m (2024)
-  - **Hidrografia** – rios, córregos, lagoas e áreas úmidas do OpenStreetMap, com a distância ao corpo hídrico mais próximo
+  - **Hidrografia** – base oficial da ANA (trechos de drenagem com nome e dominialidade, massas d'água), completada com o
+    OpenStreetMap; distâncias medidas a partir do lote (KML), faixa marginal de 30 m opcional, região hidrográfica e ottobacia
+  - **Áreas protegidas** – UCs federais e cavernas (ICMBio/CANIE), UCs estaduais/municipais e terras indígenas (ANA/SNIRH),
+    com a distância até o lote e alertas de 3 km (CONAMA 428/2010) e 250 m de cavernas (CONAMA 347/2004)
   - **Hipsometria** e **declividade** (classes da Embrapa) – Mapzen Terrain Tiles (SRTM ~30 m)
   - **Solos** – IBGE/BDiA, pedologia 1:250.000 (SiBCS), servida por este site em blocos de 5°
   - **Geologia** – SGB/CPRM, litoestratigrafia 1:1.000.000
