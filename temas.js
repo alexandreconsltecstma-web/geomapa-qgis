@@ -387,7 +387,7 @@ const TEMAS = {
       if (qualquer && qualquer.d < 30) linhas.push(["Atenção", `há drenagem a menos de 30 m ${daRef}: verificar APP (Lei 12.651/2012, art. 4º) em campo`]);
       try {
         const [rh, ob] = await Promise.all([arcgisPonto(ANA_BASE, 8, p, "RHI_NM"), arcgisPonto(ANA_BASE, 2, p, "ACH_CD,ACH_NU_NIVEL_OTTO")]);
-        if (rh) linhas.push(["Região hidrográfica", rh.RHI_NM.replace(/^Região Hidrográfica\s*/i, "")]);
+        if (rh) linhas.push(["Região hidrográfica", titulo(rh.RHI_NM).replace(/^Região Hidrográfica\s*/i, "").replace(/^(do|da|de)\s+/i, "")]);
         if (ob) linhas.push(["Ottobacia (ANA)", `${ob.ACH_CD} (nível ${ob.ACH_NU_NIVEL_OTTO})`]);
       } catch (e) { /* informação opcional */ }
       return linhas;
