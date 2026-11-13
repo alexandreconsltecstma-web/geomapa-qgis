@@ -109,3 +109,16 @@ dialog code { background: var(--fundo); padding: 1px 4px; border-radius: 4px; }
   .mapa { height: 58vh; flex: none; }
   .marca p { display: none; }
 }
+
+/* tipos de mapa agrupados e bloco do tema */
+.opcoes { gap: 5px; }
+.opcoes .grupo { margin: 8px 0 1px; font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--suave); }
+.opcoes .grupo:first-child { margin-top: 0; }
+.opcoes label { padding: 6px 10px; }
+.tema-bloco { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px dashed var(--borda); border-radius: 8px; }
+.tema-bloco input[type=range] { accent-color: var(--verde); }
+.leg { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; max-height: 220px; overflow: auto; }
+.leg li { display: flex; align-items: center; gap: 7px; font-size: .78rem; color: var(--texto); line-height: 1.25; }
+.leg i { flex: none; width: 18px; height: 11px; border: 1px solid #888; border-radius: 2px; }
+.fontes { margin: 0 0 8px; padding-left: 18px; font-size: .85rem; }
+.fontes li { margin: 2px 0; }

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GeoMapa QGIS</title>
-<meta name="description" content="Gere mapas de localização e de áreas de influência (AID/AII) no navegador e baixe o pacote pronto para o QGIS.">
+<meta name="description" content="Gere mapas de localização, áreas de influência, uso do solo, hidrografia, relevo, declividade, solos, geologia, clima, qualidade do ar e biomas no navegador e baixe o pacote pronto para o QGIS.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32 4C21 4 12 13 12 24c0 15 20 36 20 36s20-21 20-36C52 13 43 4 32 4z' fill='%233e5a1e'/%3E%3Ccircle cx='32' cy='24' r='8' fill='%23f5e9c8'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@10.2.1/ol.css">
 <link rel="stylesheet" href="style.css">
@@ -13,7 +13,7 @@
 <header class="topo">
   <div class="marca">
     <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M32 4C21 4 12 13 12 24c0 15 20 36 20 36s20-21 20-36C52 13 43 4 32 4z" fill="currentColor"/><circle cx="32" cy="24" r="8" fill="var(--creme)"/></svg>
-    <div><h1>GeoMapa QGIS</h1><p>Mapas de localização e de áreas de influência, prontos para imprimir ou abrir no QGIS</p></div>
+    <div><h1>GeoMapa QGIS</h1><p>Mapas de localização, influência, meio físico, clima e ar, prontos para imprimir ou abrir no QGIS</p></div>
   </div>
   <button id="btn-ajuda" class="link" type="button">Como funciona</button>
 </header>
@@ -40,10 +40,31 @@
 
     <section class="bloco">
       <h2><span class="num">2</span> Tipo de mapa</h2>
-      <div class="opcoes" role="radiogroup">
+      <div class="opcoes" role="radiogroup" aria-label="Tipo de mapa">
+        <p class="grupo">Localização</p>
         <label><input type="radio" name="modelo" value="localizacao" checked><span><b>Localização</b>Ponto e lote sobre o mapa de ruas</span></label>
         <label><input type="radio" name="modelo" value="influencia"><span><b>Áreas de influência</b>ADA, AID e AII sobre imagem de satélite</span></label>
         <label><input type="radio" name="modelo" value="municipio"><span><b>Situação no município</b>Limite municipal do IBGE e o ponto</span></label>
+        <p class="grupo">Meio físico</p>
+        <label><input type="radio" name="modelo" value="uso"><span><b>Uso e cobertura do solo</b>Sentinel-2, 10 m (2024)</span></label>
+        <label><input type="radio" name="modelo" value="hidrografia"><span><b>Hidrografia</b>Rios, córregos, lagoas e áreas úmidas</span></label>
+        <label><input type="radio" name="modelo" value="relevo"><span><b>Hipsometria</b>Altitude do terreno com sombreamento</span></label>
+        <label><input type="radio" name="modelo" value="declividade"><span><b>Declividade</b>Classes de relevo da Embrapa</span></label>
+        <label><input type="radio" name="modelo" value="solos"><span><b>Solos</b>Pedologia do IBGE (SiBCS)</span></label>
+        <label><input type="radio" name="modelo" value="geologia"><span><b>Geologia</b>Unidades litoestratigráficas do SGB</span></label>
+        <p class="grupo">Clima e ar</p>
+        <label><input type="radio" name="modelo" value="koppen"><span><b>Clima (Köppen)</b>Classificação climática e climograma</span></label>
+        <label><input type="radio" name="modelo" value="precipitacao"><span><b>Precipitação</b>Chuva média anual e climograma</span></label>
+        <label><input type="radio" name="modelo" value="temperatura"><span><b>Temperatura</b>Temperatura média anual e climograma</span></label>
+        <label><input type="radio" name="modelo" value="ar"><span><b>Qualidade do ar</b>Aerossóis (NASA) e poluentes no ponto</span></label>
+        <p class="grupo">Meio biótico</p>
+        <label><input type="radio" name="modelo" value="biomas"><span><b>Biomas</b>Limites dos biomas do IBGE</span></label>
+      </div>
+      <div id="bloco-tema" class="tema-bloco" hidden>
+        <label>Transparência da camada temática
+          <input id="opacidade" type="range" min="20" max="100" step="5" value="75"></label>
+        <div id="tema-info" aria-live="polite"></div>
+        <button id="btn-clima" type="button" hidden>Baixar climograma (PNG)</button>
       </div>
       <div class="duas" id="raios">
         <label>Raio da AID (m)<input id="raio1" type="number" min="10" step="10" value="100"></label>
@@ -52,6 +73,7 @@
       <label>Mapa de fundo
         <select id="base">
           <option value="osm">Ruas (OpenStreetMap)</option>
+          <option value="claro">Cinza claro (Esri)</option>
           <option value="satelite">Satélite (Esri)</option>
           <option value="topo">Topográfico (OpenTopoMap)</option>
         </select>
@@ -91,7 +113,7 @@
   <h2>Como funciona</h2>
   <ol>
     <li><b>Marque o local:</b> busque um endereço, digite as coordenadas, clique no mapa ou carregue o KML/GeoJSON do lote.</li>
-    <li><b>Escolha o tipo de mapa</b> e o fundo. No modo "Áreas de influência", os raios da AID e da AII são calculados a partir do ponto.</li>
+    <li><b>Escolha o tipo de mapa</b> e o fundo. No modo "Áreas de influência", os raios da AID e da AII são calculados a partir do ponto. Os mapas temáticos (uso do solo, hidrografia, relevo, declividade, solos, geologia, clima, ar e biomas) já abrem num enquadramento adequado e mostram a legenda e o valor no ponto.</li>
     <li><b>Preencha os textos</b> e ajuste o zoom: o mapa baixado usa o enquadramento da tela.</li>
     <li><b>Baixe</b> o mapa pronto (PNG ou PDF A4) ou o <b>pacote para o QGIS</b>.</li>
   </ol>
@@ -103,6 +125,16 @@
     <li>O QGIS carrega as camadas, cria o layout de impressão e salva <code>mapa.pdf</code>, <code>mapa.png</code> e <code>mapa.qgz</code> na pasta.</li>
   </ol>
   <p class="dica">Tudo é processado no seu navegador; os dados digitados não são enviados a nenhum servidor deste site. A busca de endereço usa o Nominatim (OpenStreetMap) e os limites vêm da API de malhas do IBGE.</p>
+  <h3>Fontes dos mapas temáticos</h3>
+  <ul class="fontes">
+    <li><b>Uso do solo:</b> Esri / Impact Observatory, Sentinel-2 Land Cover 10 m (2024).</li>
+    <li><b>Hidrografia:</b> OpenStreetMap (Overpass API).</li>
+    <li><b>Hipsometria e declividade:</b> Mapzen Terrain Tiles (SRTM, ~30 m) e Esri World Hillshade; classes de declividade da Embrapa (1979).</li>
+    <li><b>Solos:</b> IBGE, BDiA – Pedologia 1:250.000. <b>Geologia:</b> SGB/CPRM, litoestratigrafia 1:1.000.000.</li>
+    <li><b>Clima:</b> CHELSA v2.1 (1981–2010); climograma com ERA5/Copernicus (1991–2020) via Open-Meteo.</li>
+    <li><b>Qualidade do ar:</b> NASA GIBS (MERRA-2, aerossóis) e CAMS/Copernicus via Open-Meteo. <b>Biomas:</b> IBGE (2019).</li>
+  </ul>
+  <p class="dica">São bases de escala regional: servem para caracterização e não substituem levantamento de campo.</p>
   <form method="dialog"><button class="primario">Entendi</button></form>
 </dialog>
 
@@ -111,6 +143,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@tmcw/togeojson@5.8.1/dist/togeojson.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+<script src="temas.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

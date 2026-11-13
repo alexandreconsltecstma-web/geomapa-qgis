@@ -20,6 +20,7 @@ from qgis.core import (
     QgsLayoutPoint, QgsLayoutSize, QgsLayerTree, QgsLegendStyle, QgsMarkerSymbol, QgsPalLayerSettings, QgsPrintLayout,
     QgsProject, QgsRasterLayer, QgsRectangle, QgsSingleSymbolRenderer, QgsTextBufferSettings, QgsTextFormat,
     QgsUnitTypes, QgsVectorLayer, QgsVectorLayerSimpleLabeling, QgsSymbolLayerUtils, QgsPathResolver,
+    QgsCategorizedSymbolRenderer, QgsRendererCategory, QgsLineSymbol, QgsSymbol,
 )
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QColor, QFont
@@ -30,7 +31,11 @@ BASES = {
                  "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
                  "Esri World Imagery (Esri, Maxar, Earthstar Geographics)"),
     "topo": ("OpenTopoMap", "https://tile.opentopomap.org/{z}/{x}/{y}.png", "© OpenTopoMap (CC-BY-SA), © OpenStreetMap"),
+    "claro": ("Cinza claro (Esri)",
+              "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+              "Esri World Light Gray Base (Esri, HERE, Garmin, © OpenStreetMap)"),
 }
+HILLSHADE = "https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}"
 VERDE, OURO, TXT = "#3e5a1e", "#795c01", "#333333"
 
 
@@ -83,6 +88,65 @@ def rotulo(lyr, texto, tam=8, cor="#b00000"):
     s.placement = QgsPalLayerSettings.AroundPoint if lyr.geometryType() == 0 else QgsPalLayerSettings.OverPoint
     lyr.setLabeling(QgsVectorLayerSimpleLabeling(s))
     lyr.setLabelsEnabled(True)
+
+
+def categorias(lyr, campo_rotulo, itens, linha=False):
+    """Simbologia por classe: rótulo -> cor (na ordem da legenda do site)."""
+    cats = []
+    for it in itens:
+        cor = it.get("cor") or it.get("fill") or "#cccccc"
+        if linha:
+            sym = QgsLineSymbol.createSimple({"color": cor, "width": str(it.get("larg", 0.5))})
+            if it.get("tracejado"):
+                sym.symbolLayer(0).setPenStyle(Qt.DashLine)
+        else:
+            sym = QgsFillSymbol.createSimple({"color": cor, "outline_color": it.get("stroke") or "#6b6b6b", "outline_width": "0.15"})
+        cats.append(QgsRendererCategory(it["rotulo"], sym, it["rotulo"]))
+    lyr.setRenderer(QgsCategorizedSymbolRenderer(campo_rotulo, cats))
+
+
+def camadas_tema(pasta, t, geo, proj):
+    """Carrega a camada temática do pacote; devolve (camadas do mapa, camadas da legenda)."""
+    no_mapa, na_legenda = [], []
+    leg = [dict(i, cor=i.get("cor") or i.get("fill")) for i in t.get("legenda", []) if i.get("tipo") != "ponto"]
+    for arq in t.get("vetor") or []:
+        linha = "linhas" in arq
+        lyr = camada(pasta, arq, t["nome"] + (" – cursos d'água" if linha else ""), geo)
+        if not lyr:
+            continue
+        rotulos = {f["rotulo"]: f["cor"] for f in lyr.getFeatures()}
+        itens = [i for i in leg if i["rotulo"] in rotulos] + [
+            {"rotulo": r, "cor": c} for r, c in rotulos.items() if r not in {i["rotulo"] for i in leg}]
+        for i in itens:
+            i["cor"] = rotulos.get(i["rotulo"], i["cor"])
+            if linha:
+                i["larg"] = 0.7 if i["rotulo"] == "Rio" else 0.4
+        categorias(lyr, "rotulo", itens, linha)
+        if t["id"] == "geologia":
+            rotulo(lyr, '"sigla"', 6.5, "#222222")
+        lyr.setOpacity(t.get("opacidade", 0.8) if not linha else 1.0)
+        no_mapa.append(lyr)
+        na_legenda.append(lyr)
+    if t.get("raster"):
+        caminho = os.path.join(pasta, t["raster"])
+        ras = QgsRasterLayer(caminho, t["nome"])
+        if ras.isValid():
+            if not ras.crs().isValid():
+                ras.setCrs(QgsCoordinateReferenceSystem("EPSG:3857"))
+            ras.renderer().setOpacity(t.get("opacidade", 0.8))
+            proj.addMapLayer(ras, False)
+            if t["id"] == "relevo":
+                sombra = QgsRasterLayer(f"type=xyz&url={HILLSHADE}&zmax=16&zmin=0", "Sombreamento (Esri)", "wms")
+                sombra.renderer().setOpacity(0.35)
+                proj.addMapLayer(sombra, False)
+                no_mapa.append(sombra)
+            no_mapa.append(ras)
+            # camada só de legenda (sem feições) com as classes do tema
+            lg = QgsVectorLayer("Polygon?crs=EPSG:4674&field=rotulo:string(200)", t["nome"], "memory")
+            categorias(lg, "rotulo", [i for i in leg if i.get("tipo") != "linha"])
+            proj.addMapLayer(lg, False)
+            na_legenda.append(lg)
+    return no_mapa, na_legenda
 
 
 def mm(x, y):
@@ -167,6 +231,13 @@ def main():
         preencher(mun, "0,0,0,0", "#111111", 0.9)
         cam.append(mun)
         leg.append(mun)
+    tema = cfg.get("tema") or None
+    if tema:
+        if isinstance(tema.get("vetor"), str):
+            tema["vetor"] = [tema["vetor"]]
+        tc, tl = camadas_tema(pasta, tema, geo, proj)
+        cam.extend(tc)
+        leg.extend(tl)
     nome_base, url, credito = BASES.get(cfg.get("base", "osm"), BASES["osm"])
     base = QgsRasterLayer(f"type=xyz&url={url}&zmax=19&zmin=0", nome_base, "wms")
     proj.addMapLayer(base, False)
@@ -257,7 +328,22 @@ def main():
         ov.setLinkedMap(mapa)
         ov.setFrameSymbol(QgsFillSymbol.createSimple({"color": "227,26,28,200", "outline_color": "#e31a1c", "outline_width": "1.2"}))
 
-    caixa(lay, px, 72, pw, 84)
+    caixa(lay, px, 72, pw, 81)
+    h_quadro = 0
+    if tema and tema.get("climograma") and os.path.exists(os.path.join(pasta, tema["climograma"])):
+        h_quadro = 36
+        texto(lay, px + 2, 72 + 81 - h_quadro, pw - 4, 4, "Climograma no ponto (°C e mm)", 6.8, VERDE, True)
+        fig = QgsLayoutItemPicture(lay)
+        fig.setPicturePath(os.path.join(pasta, tema["climograma"]))
+        lay.addLayoutItem(fig)
+        fig.attemptMove(mm(px + 1.5, 72 + 81 - h_quadro + 4))
+        fig.attemptResize(tam(pw - 3, h_quadro - 5))
+    elif tema and tema.get("tabela"):
+        tb = tema["tabela"]
+        h_quadro = 7 + 3.1 * len(tb["linhas"])
+        html = f"<b style='color:{VERDE}'>{esc(tb['titulo'])}</b><br>" + "".join(
+            f"<b>{esc(a)}</b>: {esc(b)}<br>" for a, b in tb["linhas"])
+        texto(lay, px + 2, 72 + 81 - h_quadro, pw - 4, h_quadro, html, 6.4, html=True)
     lg = QgsLayoutItemLegend(lay)
     lg.setTitle("LEGENDA")
     lg.setLinkedMap(mapa)
@@ -269,21 +355,32 @@ def main():
     main.raiz = raiz  # mantém a árvore viva enquanto o layout existir
     lg.setFrameEnabled(False)
     lg.rstyle(QgsLegendStyle.Title).setTextFormat(fmt(9, VERDE, True))
-    lg.rstyle(QgsLegendStyle.SymbolLabel).setTextFormat(fmt(7))
+    n_classes = (len(tema.get("legenda", [])) if tema else 0) + (8 if h_quadro else 0)
+    tam_leg = 7 if n_classes <= 10 else 6 if n_classes <= 16 else 5.2
+    lg.rstyle(QgsLegendStyle.SymbolLabel).setTextFormat(fmt(tam_leg))
+    lg.rstyle(QgsLegendStyle.Group).setTextFormat(fmt(tam_leg + 0.5, TXT, True))
+    lg.rstyle(QgsLegendStyle.Subgroup).setTextFormat(fmt(tam_leg + 0.5, TXT, True))
+    if n_classes > 10:
+        lg.setSymbolHeight(3)
+        lg.setSymbolWidth(6)
+        lg.rstyle(QgsLegendStyle.Symbol).setMargin(QgsLegendStyle.Top, 0.8)
+    lg.setWrapString("|")
     lay.addLayoutItem(lg)
     lg.attemptMove(mm(px + 1.5, 73))
     lg.setResizeToContents(False)
-    lg.attemptResize(tam(pw - 3, 82))
+    lg.attemptResize(tam(pw - 3, 79 - h_quadro))
 
-    caixa(lay, px, 158, pw, 44, "#f7f5ec")
+    caixa(lay, px, 155, pw, 47, "#f7f5ec")
     info = "".join(f"<b>{esc(r)}:</b> {esc(v)}<br>" for r, v in (
         ("Empreendimento", cfg.get("empreendimento")), ("Endereço", cfg.get("endereco")),
-        ("Coordenadas", f"{lat:.6f}, {lon:.6f}"), ("Responsável", cfg.get("responsavel")), ("Data", cfg.get("data"))) if v)
-    texto(lay, px + 2, 159.2, pw - 4, 25, info, 6.6, html=True)
-    texto(lay, px + 2, 183, pw - 4, 18.5,
-          f"<b>Sistema de referência:</b> SIRGAS 2000 / UTM {zona}{'S' if lat < 0 else 'N'} ({utm.authid()})<br>"
-          f"<b>Fonte:</b> {esc(credito)}" + (" ; limite municipal: IBGE" if mun else "") +
-          (f"; {esc(cfg['fonte_extra'])}" if cfg.get("fonte_extra") else "") + ". Gerado com QGIS.", 6.3, html=True)
+        ("Coordenadas", f"{lat:.6f}, {lon:.6f}"), *((tema or {}).get("info") or [])[:2],
+        ("Responsável", cfg.get("responsavel")), ("Data", cfg.get("data"))) if v)
+    texto(lay, px + 2, 156.2, pw - 4, 27, info, 6.4, html=True)
+    texto(lay, px + 2, 183.5, pw - 4, 18,
+          f"<b>Sistema de referência:</b> SIRGAS 2000 / UTM {zona}{'S' if lat < 0 else 'N'} ({utm.authid()})<br>" +
+          (f"<b>Tema:</b> {esc(tema['fonte'])}<br>" if tema else "") +
+          f"<b>Fundo:</b> {esc(credito)}" + ("; limite municipal: IBGE" if mun else "") + ". Gerado com QGIS.",
+          5.6 if tema else 6.3, html=True)
 
     proj.layoutManager().addLayout(lay)
     exp = QgsLayoutExporter(lay)

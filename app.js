@@ -10,6 +10,9 @@ const BASES = {
   satelite: { url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", max: 19,
               credito: "Esri World Imagery (Esri, Maxar, Earthstar Geographics)",
               attr: "Imagem © Esri, Maxar, Earthstar Geographics" },
+  claro: { url: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}", max: 16,
+           credito: "Esri World Light Gray Base (Esri, HERE, Garmin, © OpenStreetMap)",
+           attr: "Base © Esri, HERE, Garmin, © OpenStreetMap" },
   topo: { url: "https://tile.opentopomap.org/{z}/{x}/{y}.png", max: 17,
           credito: "© OpenTopoMap (CC-BY-SA), © OpenStreetMap",
           attr: '© <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA), © OpenStreetMap' },
@@ -60,7 +63,7 @@ const camadas = {
 
 const mapa = new ol.Map({
   target: "mapa",
-  layers: [camadaBase, camadas.municipio, camadas.aii, camadas.aid, camadas.lote, camadas.ponto],
+  layers: [camadaBase, grupoTema, camadas.municipio, camadas.aii, camadas.aid, camadas.lote, camadas.ponto],
   view: new ol.View({ center: ol.proj.fromLonLat([-47.9, -15.8]), zoom: 4, maxZoom: 19 }),
   controls: ol.control.defaults.defaults({ attributionOptions: { collapsible: false } })
     .extend([new ol.control.ScaleLine({ units: "metric" })]),
@@ -113,8 +116,9 @@ function desenhar(enquadrar) {
 
 function enquadrarMapa() {
   const m = modelo();
-  let ext;
-  if (m === "municipio" && estado.municipio) ext = camadas.municipio.getSource().getExtent();
+  let ext = extensaoTema(m);
+  if (ext) { /* enquadramento do tema */ }
+  else if (m === "municipio" && estado.municipio) ext = camadas.municipio.getSource().getExtent();
   else if (m === "influencia") ext = camadas.aii.getSource().getExtent();
   else {
     const raio = estado.lote ? Math.max(250, turf.length(turf.polygonToLine(estado.lote), { units: "meters" })) : 450;
@@ -153,7 +157,8 @@ async function definirPonto(lon, lat, origem) {
   } catch (e) {
     $("info-local").textContent = "Não foi possível consultar o IBGE agora; o mapa funciona sem o limite municipal.";
   }
-  desenhar(origem !== "clique" && modelo() === "municipio");
+  desenhar(origem !== "clique" && (modelo() === "municipio" || !!TEMAS[modelo()]));
+  if (temaEstado.id) agendarTema();
 }
 
 const cache = { mun: {}, nomes: {} };
@@ -242,7 +247,7 @@ const DPI = 200, MM = DPI / 25.4;
 const PAG = { w: Math.round(297 * MM), h: Math.round(210 * MM) };
 const QUADRO = { x: 13, y: 29, w: 188, h: 168 };  // mm, igual ao script do QGIS
 
-function renderizarMapa(larguraPx, alturaPx) {
+function renderizarMapa(larguraPx, alturaPx, soTema) {
   // Renderiza o mapa no tamanho do quadro do layout, mantendo o centro e a área visível na tela.
   return new Promise((resolve, reject) => {
     const view = mapa.getView();
@@ -253,7 +258,16 @@ function renderizarMapa(larguraPx, alturaPx) {
     const res = Math.max(ol.extent.getWidth(ext) / larguraPx, ol.extent.getHeight(ext) / alturaPx);
     const div = mapa.getTargetElement();
     const timeout = setTimeout(() => { restaurar(); reject(new Error("O fundo do mapa demorou demais para carregar.")); }, 45000);
+    const ocultas = [];
+    if (soTema) {
+      for (const l of [camadaBase, ...Object.values(camadas), ...grupoTema.getLayers().getArray().filter((x) => x.getClassName() !== "tema")])
+        if (l.getVisible()) { l.setVisible(false); ocultas.push(l); }
+      // a transparência é aplicada no QGIS: a imagem do tema sai opaca
+      grupoTema.getLayers().forEach((l) => { if (l.getClassName() === "tema") { l.set("opOrig", l.getOpacity()); l.setOpacity(1); } });
+    }
     function restaurar() {
+      ocultas.forEach((l) => l.setVisible(true));
+      if (soTema) grupoTema.getLayers().forEach((l) => { if (l.get("opOrig") != null) { l.setOpacity(l.get("opOrig")); l.unset("opOrig"); } });
       div.style.width = ""; div.style.height = ""; div.style.flex = "";
       K = 1;
       Object.values(camadas).forEach((c) => c.changed());
@@ -266,13 +280,12 @@ function renderizarMapa(larguraPx, alturaPx) {
         const tela = document.createElement("canvas");
         tela.width = larguraPx; tela.height = alturaPx;
         const ctx = tela.getContext("2d");
-        ctx.fillStyle = "#dde3d6";
-        ctx.fillRect(0, 0, larguraPx, alturaPx);
+        if (!soTema) { ctx.fillStyle = "#dde3d6"; ctx.fillRect(0, 0, larguraPx, alturaPx); }
         const proporcao = larguraPx / div.clientWidth;
-        mapa.getViewport().querySelectorAll(".ol-layer canvas, canvas.ol-layer").forEach((cv) => {
+        mapa.getViewport().querySelectorAll(".ol-layer canvas, canvas.ol-layer, .tema canvas, .tema-sombra canvas").forEach((cv) => {
           if (cv.width === 0) return;
           const op = cv.parentNode.style.opacity || cv.style.opacity;
-          ctx.globalAlpha = op === "" ? 1 : Number(op);
+          ctx.globalAlpha = soTema ? 1 : (op === "" ? 1 : Number(op));
           const m = (cv.style.transform || "").match(/^matrix\(([^(]*)\)$/);
           ctx.setTransform(1, 0, 0, 1, 0, 0);
           if (m) {
@@ -283,11 +296,18 @@ function renderizarMapa(larguraPx, alturaPx) {
         });
         ctx.globalAlpha = 1;
         ctx.setTransform(1, 0, 0, 1, 0, 0);
+        // georreferência do quadro exportado, fixada antes de o mapa voltar ao tamanho da tela
         const centro = view.getCenter();
+        const eE = view.calculateExtent(mapa.getSize());
+        const eW = eE[2] - eE[0], eH = eE[3] - eE[1];
         const geo = {
-          canto: (px, py) => ol.proj.toLonLat(mapa.getCoordinateFromPixel([px / proporcao, py / proporcao])),
-          pixel: (lon, lat) => mapa.getPixelFromCoordinate(ol.proj.fromLonLat([lon, lat])).map((v) => v * proporcao),
-          mPorPx: ol.proj.getPointResolution(view.getProjection(), view.getResolution(), centro, "m") / proporcao,
+          extensao: eE,
+          canto: (px, py) => ol.proj.toLonLat([eE[0] + (px / larguraPx) * eW, eE[3] - (py / alturaPx) * eH]),
+          pixel: (lon, lat) => {
+            const c = ol.proj.fromLonLat([lon, lat]);
+            return [((c[0] - eE[0]) / eW) * larguraPx, ((eE[3] - c[1]) / eH) * alturaPx];
+          },
+          mPorPx: ol.proj.getPointResolution(view.getProjection(), eW / larguraPx, centro, "m"),
         };
         restaurar();
         resolve({ tela, geo });
@@ -427,29 +447,59 @@ async function montarLayout() {
   ctx.fillText("Situação no Brasil", (px + 2) * MM, 27.3 * MM);
   try { desenharSituacao(ctx, await malhaUFs(), (px + 1.5) * MM, 31 * MM, (pw - 3) * MM, 38 * MM); } catch (e) { /* sem situação */ }
 
-  // legenda
-  caixa(ctx, px, 72, pw, 84);
+  // legenda (o espaçamento se ajusta ao número de classes)
+  const LEG = { y: 72, h: 81 };
+  caixa(ctx, px, LEG.y, pw, LEG.h);
   fonte(ctx, 9, true); ctx.fillStyle = COR.verde;
-  ctx.fillText("LEGENDA", (px + 4) * MM, 75 * MM);
-  let ly = 82;
-  for (const it of itensLegenda()) {
-    desenharSimbolo(ctx, it, (px + 4) * MM, ly * MM);
-    fonte(ctx, 7.5); ctx.fillStyle = COR.texto; ctx.textBaseline = "middle";
-    ctx.fillText(it.rotulo, (px + 13) * MM, (ly + 1.8) * MM, (pw - 16) * MM);
+  ctx.fillText("LEGENDA", (px + 4) * MM, (LEG.y + 3) * MM);
+  const quadro = temaEstado.id ? temaEstado.quadro : null;
+  const hQuadro = !quadro ? 0 : quadro.tipo === "climograma" ? 36 : 6 + quadro.linhas.length * 3.1;
+  const itens = itensLegenda();
+  const area = LEG.h - 10 - hQuadro - (hQuadro ? 2 : 0);
+  let n = itens.length, passoL = Math.min(6.5, area / Math.max(1, n));
+  if (passoL < 3.4) { n = Math.floor(area / 3.4) - 1; passoL = 3.4; }
+  const esc = Math.min(1, passoL / 6.5) ** 0.7;
+  let ly = LEG.y + 10;
+  for (const it of itens.slice(0, n)) {
+    desenharSimbolo(ctx, it, (px + 4) * MM, ly * MM, esc);
+    fonte(ctx, 7.5 * Math.max(0.78, esc)); ctx.fillStyle = COR.texto; ctx.textBaseline = "middle";
+    ctx.fillText(cortar(ctx, it.rotulo, (pw - 15) * MM), (px + 4 + 8 * esc + 2) * MM, (ly + 1.8 * esc) * MM);
     ctx.textBaseline = "top";
-    ly += 6.5;
+    ly += passoL;
+  }
+  if (itens.length > n) {
+    fonte(ctx, 6.2); ctx.fillStyle = COR.texto;
+    ctx.fillText(`… e mais ${itens.length - n} classes (veja o pacote do QGIS)`, (px + 4) * MM, ly * MM);
+  }
+  if (quadro) {
+    const qy = LEG.y + LEG.h - hQuadro - 1;
+    ctx.strokeStyle = "#ccc"; ctx.lineWidth = 0.2 * MM;
+    ctx.beginPath(); ctx.moveTo((px + 3) * MM, (qy - 1) * MM); ctx.lineTo((px + pw - 3) * MM, (qy - 1) * MM); ctx.stroke();
+    fonte(ctx, 6.8, true); ctx.fillStyle = COR.verde; ctx.textBaseline = "top";
+    ctx.fillText(cortar(ctx, quadro.titulo, (pw - 6) * MM), (px + 3) * MM, qy * MM);
+    if (quadro.tipo === "climograma") {
+      desenharClimograma(ctx, (px + 1) * MM, (qy + 3.5) * MM, (pw - 2) * MM, 28 * MM, quadro.dados, MM / 4.3);
+      fonte(ctx, 5.8); ctx.fillStyle = COR.texto;
+      ctx.fillText(quadro.rodape, (px + 3) * MM, (qy + 31.8) * MM);
+    } else {
+      quadro.linhas.forEach(([a, b], i) => {
+        fonte(ctx, 6.4, true); ctx.fillStyle = COR.texto; ctx.fillText(a, (px + 4) * MM, (qy + 4 + i * 3.1) * MM);
+        fonte(ctx, 6.4); ctx.fillText(b, (px + 18) * MM, (qy + 4 + i * 3.1) * MM);
+      });
+    }
   }
 
   // dados e fontes
-  caixa(ctx, px, 158, pw, 44, "#f7f5ec");
+  caixa(ctx, px, 155, pw, 47, "#f7f5ec");
   const lat = estado.ponto[1], lon = estado.ponto[0];
   const linhas = [
     ["Empreendimento", $("empreendimento").value], ["Endereço", $("endereco").value],
     ["Coordenadas", `${dms(lat, "lat")} / ${dms(lon, "lon")}`],
     ["Município", estado.municipio ? `${estado.municipio.nome}/${estado.municipio.uf}` : ""],
+    ...(temaEstado.id ? temaEstado.info.slice(0, 2) : []),
     ["Responsável", $("responsavel").value], ["Data", $("data").value],
   ].filter(([, v]) => v);
-  let ty = 160 * MM;
+  let ty = 157 * MM;
   for (const [r, v] of linhas) {
     fonte(ctx, 6.6, true); ctx.fillStyle = COR.texto;
     const w = ctx.measureText(`${r}: `).width;
@@ -459,12 +509,16 @@ async function montarLayout() {
     partes.forEach((t, i) => ctx.fillText(t, (px + 2) * MM + (i ? 0 : w), ty + i * 3.1 * MM));
     ty += partes.length * 3.1 * MM + 0.4 * MM;
   }
-  ty = Math.max(ty + 1.5 * MM, 183 * MM);
-  fonte(ctx, 6.3);
   const fontes = `Sistema de referência: WGS 84 / Pseudo-Mercator (EPSG:3857) na imagem; coordenadas geográficas. ` +
-    `Fonte: ${BASES[$("base").value].credito}` + (camadas.municipio.getSource().getFeatures().length ? "; limite municipal: IBGE" : "") +
+    (temaEstado.id ? `Tema: ${TEMAS[temaEstado.id].fonte}. ` : "") +
+    `Fundo: ${BASES[$("base").value].credito}` + (camadas.municipio.getSource().getFeatures().length ? "; limite municipal: IBGE" : "") +
     `. Gerado com GeoMapa QGIS.`;
-  for (const t of quebrar(ctx, fontes, (pw - 4) * MM)) { ctx.fillText(t, (px + 2) * MM, ty); ty += 2.9 * MM; }
+  let tamF = 6.3, linhasF;
+  do { fonte(ctx, tamF); linhasF = quebrar(ctx, fontes, (pw - 4) * MM); tamF -= 0.3; }
+  while (ty + 1.5 * MM + linhasF.length * (tamF + 0.3) * 0.46 * MM > 201 * MM && tamF > 4.6);
+  const altF = (tamF + 0.3) * 0.46 * MM;
+  ty = Math.max(ty + 1.5 * MM, 201 * MM - linhasF.length * altF);
+  for (const t of linhasF) { ctx.fillText(t, (px + 2) * MM, ty); ty += altF; }
   return cv;
 }
 
@@ -497,17 +551,31 @@ function itensLegenda() {
   }
   if (camadas.municipio.getSource().getFeatures().length)
     it.push({ tipo: "area", fill: "rgba(255,255,255,0)", stroke: "#111", rotulo: `Limite municipal – ${estado.municipio.nome}` });
+  if (temaEstado.id) it.push(...temaEstado.legenda);
   return it;
 }
 
-function desenharSimbolo(ctx, it, x, y) {
+function desenharSimbolo(ctx, it, x, y, e = 1) {
   if (it.tipo === "ponto") {
     ctx.fillStyle = "#e31a1c"; ctx.strokeStyle = "#fff"; ctx.lineWidth = 0.5 * MM;
-    ctx.beginPath(); ctx.arc(x + 3 * MM, y + 1.8 * MM, 1.7 * MM, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x + 3 * MM * e, y + 1.8 * MM * e, 1.7 * MM * e, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
     return;
   }
-  ctx.fillStyle = it.fill; ctx.fillRect(x, y, 6 * MM, 3.6 * MM);
-  ctx.strokeStyle = it.stroke; ctx.lineWidth = 0.5 * MM; ctx.strokeRect(x, y, 6 * MM, 3.6 * MM);
+  if (it.tipo === "linha") {
+    ctx.strokeStyle = it.stroke; ctx.lineWidth = 0.7 * MM * e; ctx.setLineDash(it.tracejado ? [1.4 * MM, 0.8 * MM] : []);
+    ctx.beginPath(); ctx.moveTo(x, y + 1.8 * MM * e); ctx.lineTo(x + 8 * MM * e, y + 1.8 * MM * e); ctx.stroke();
+    ctx.setLineDash([]);
+    return;
+  }
+  ctx.fillStyle = it.fill || it.cor; ctx.fillRect(x, y, 8 * MM * e, 3.6 * MM * e);
+  ctx.strokeStyle = it.stroke || "#888"; ctx.lineWidth = 0.3 * MM; ctx.strokeRect(x, y, 8 * MM * e, 3.6 * MM * e);
+}
+
+function cortar(ctx, t, larg) {
+  t = String(t);
+  if (ctx.measureText(t).width <= larg) return t;
+  while (t.length > 3 && ctx.measureText(t + "…").width > larg) t = t.slice(0, -1);
+  return t.trimEnd() + "…";
 }
 
 function nomeArquivo(ext) {
@@ -532,7 +600,7 @@ async function comBotao(id, rotulo, fn) {
   status("Preparando o arquivo… (o fundo do mapa é baixado em alta resolução)");
   try { await fn(); status("Arquivo pronto. Confira a pasta de downloads."); }
   catch (e) { console.error(e); status(`Não foi possível gerar o arquivo: ${e.message}`, true); }
-  finally { b.textContent = txt; for (const x of ["btn-png", "btn-pdf", "btn-qgis"]) $(x).disabled = !estado.ponto; }
+  finally { b.textContent = txt; for (const x of ["btn-png", "btn-pdf", "btn-qgis"]) $(x).disabled = !estado.ponto; b.disabled = false; }
 }
 
 async function exportarPNG() {
@@ -576,6 +644,7 @@ async function exportarQGIS() {
     municipio: estado.municipio ? `${estado.municipio.nome}/${estado.municipio.uf}` : "",
     gerado_em: new Date().toISOString(),
   };
+  cfg.tema = await arquivosTemaQGIS(zip);
   zip.file("mapa.json", JSON.stringify(cfg, null, 1));
   const script = await (await fetch("gerar_mapa_qgis.py")).text();
   zip.file("gerar_mapa_qgis.py", script);
@@ -594,8 +663,14 @@ async function exportarQGIS() {
     "Conteúdo:",
     "  mapa.json          textos, enquadramento, tipo de mapa e fundo escolhidos no site",
     "  camadas/*.geojson  ponto, lote, AID/AII, limite municipal (IBGE) e UFs (situação)",
-    "",
-    "Fontes: " + BASES[$("base").value].credito + "; malhas territoriais: IBGE.",
+    ...(temaEstado.id ? [
+      "  camadas/tema.*     camada temática (" + TEMAS[temaEstado.id].nome + "): GeoJSON com a cor de cada classe",
+      "                     ou imagem georreferenciada (PNG + PGW, EPSG:3857) do enquadramento",
+      ...(temaEstado.quadro?.tipo === "climograma" ? ["  climograma.png/.csv normais mensais de temperatura e chuva no ponto (ERA5, 1991–2020)"] : []),
+      "",
+      "Fonte do tema: " + TEMAS[temaEstado.id].fonte + ".",
+    ] : [""]),
+    "Fundo: " + BASES[$("base").value].credito + "; malhas territoriais: IBGE.",
   ].join("\r\n"));
   baixar(await zip.generateAsync({ type: "blob", compression: "DEFLATE" }), nomeArquivo("zip").replace(".zip", "_qgis.zip"));
 }
@@ -621,15 +696,23 @@ $("arquivo").addEventListener("change", async (e) => {
   try { await lerArquivo(f); }
   catch (err) { $("info-local").textContent = `Não foi possível ler o arquivo: ${err.message}.`; $("info-local").classList.add("erro"); }
 });
+const TITULOS = { localizacao: "Mapa de localização do empreendimento", influencia: "Áreas de influência do empreendimento",
+                  municipio: "Situação do empreendimento no município" };
+for (const [k, t] of Object.entries(TEMAS)) TITULOS[k] = t.titulo;
 document.querySelectorAll("input[name=modelo]").forEach((r) => r.addEventListener("change", () => {
   const m = modelo();
-  $("base").value = m === "influencia" ? "satelite" : "osm";
-  const titulos = { localizacao: "Mapa de localização do empreendimento", influencia: "Áreas de influência do empreendimento",
-                    municipio: "Situação do empreendimento no município" };
-  if (Object.values(titulos).includes($("titulo").value) || !$("titulo").value) $("titulo").value = titulos[m];
+  $("base").value = TEMAS[m]?.base || (m === "influencia" ? "satelite" : "osm");
+  if (Object.values(TITULOS).includes($("titulo").value) || !$("titulo").value) $("titulo").value = TITULOS[m];
   aplicarBase();
+  ativarTema(m);
   desenhar(true);
+  agendarTema();
 }));
+mapa.on("moveend", () => { if (temaEstado.id) agendarTema(); });
+$("opacidade").addEventListener("input", () => {
+  grupoTema.getLayers().forEach((l) => { if (l.getClassName() === "tema") l.setOpacity(Number($("opacidade").value) / 100); });
+});
+$("btn-clima").addEventListener("click", () => comBotao("btn-clima", "Gerando…", exportarClimograma));
 for (const id of ["raio1", "raio2"]) $(id).addEventListener("change", () => desenhar(true));
 $("mostrar-mun").addEventListener("change", () => desenhar(false));
 $("base").addEventListener("change", aplicarBase);
