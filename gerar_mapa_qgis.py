@@ -20,7 +20,7 @@ from qgis.core import (
     QgsLayoutPoint, QgsLayoutSize, QgsLayerTree, QgsLegendStyle, QgsMarkerSymbol, QgsPalLayerSettings, QgsPrintLayout,
     QgsProject, QgsRasterLayer, QgsRectangle, QgsSingleSymbolRenderer, QgsTextBufferSettings, QgsTextFormat,
     QgsUnitTypes, QgsVectorLayer, QgsVectorLayerSimpleLabeling, QgsSymbolLayerUtils, QgsPathResolver,
-    QgsCategorizedSymbolRenderer, QgsRendererCategory, QgsLineSymbol, QgsSymbol,
+    QgsCategorizedSymbolRenderer, QgsRendererCategory, QgsLineSymbol, QgsSymbol, QgsNullSymbolRenderer,
 )
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QColor, QFont
@@ -112,10 +112,23 @@ def camadas_tema(pasta, t, geo, proj):
     for arq in t.get("vetor") or []:
         linha = "linhas" in arq
         ponto = "pontos" in arq
-        lyr = camada(pasta, arq, t["nome"] + (" – cursos d'água" if linha else ""), geo)
+        if "rotulos" in arq:  # nomes dos rios: só rótulos, fora da legenda
+            lyr = camada(pasta, arq, "Nomes dos rios (ANA)", geo)
+            if lyr:
+                lyr.setRenderer(QgsNullSymbolRenderer())
+                s = QgsPalLayerSettings()
+                s.fieldName = "nome"
+                s.setFormat(fmt(7, "#1f4e79", False, True))
+                s.placement = QgsPalLayerSettings.Curved
+                lyr.setLabeling(QgsVectorLayerSimpleLabeling(s))
+                lyr.setLabelsEnabled(True)
+                no_mapa.append(lyr)
+            continue
+        sufixo = " – cursos d'água" if linha else " – pontos" if ponto else " – áreas" if any("linhas" in a for a in t.get("vetor") or []) else ""
+        lyr = camada(pasta, arq, t["nome"] + sufixo, geo)
         if not lyr:
             continue
-        rotulos = {f["rotulo"]: f["cor"] for f in lyr.getFeatures()}
+        rotulos = {f["rotulo"]: f["cor"] for f in lyr.getFeatures() if f["rotulo"] != "Nome do rio (ANA)"}
         itens = [i for i in leg if i["rotulo"] in rotulos] + [
             {"rotulo": r, "cor": c} for r, c in rotulos.items() if r not in {i["rotulo"] for i in leg}]
         for i in itens:
@@ -123,7 +136,8 @@ def camadas_tema(pasta, t, geo, proj):
             if linha:
                 i["larg"] = 0.7 if i["rotulo"] == "Rio" else 0.4
         if ponto:
-            cats = [QgsRendererCategory(i["rotulo"], QgsMarkerSymbol.createSimple({"name": "triangle", "color": i["cor"], "outline_color": "white",
+            cats = [QgsRendererCategory(i["rotulo"], QgsMarkerSymbol.createSimple({"name": "circle" if "Nascente" in i["rotulo"] else "triangle",
+                                                                                   "color": i["cor"], "outline_color": "white",
                                                                                    "size": "3.2"}), i["rotulo"]) for i in itens]
             lyr.setRenderer(QgsCategorizedSymbolRenderer("rotulo", cats))
         else:

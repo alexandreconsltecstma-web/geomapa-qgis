@@ -33,6 +33,7 @@ const estado = {
 
 // Fator de escala dos símbolos: 1 na tela; maior ao exportar em 200 dpi, para manter o tamanho impresso.
 let K = 1;
+let exportando = false;
 
 function estilo(fill, stroke, width) {
   return () => new ol.style.Style({
@@ -258,6 +259,7 @@ function renderizarMapa(larguraPx, alturaPx, soTema) {
     const res = Math.max(ol.extent.getWidth(ext) / larguraPx, ol.extent.getHeight(ext) / alturaPx);
     const div = mapa.getTargetElement();
     const timeout = setTimeout(() => { restaurar(); reject(new Error("O fundo do mapa demorou demais para carregar.")); }, 45000);
+    exportando = true;  // o redimensionamento da exportação não deve recarregar o tema
     const ocultas = [];
     if (soTema) {
       for (const l of [camadaBase, ...Object.values(camadas), ...grupoTema.getLayers().getArray().filter((x) => x.getClassName() !== "tema")])
@@ -266,6 +268,7 @@ function renderizarMapa(larguraPx, alturaPx, soTema) {
       grupoTema.getLayers().forEach((l) => { if (l.getClassName() === "tema") { l.set("opOrig", l.getOpacity()); l.setOpacity(1); } });
     }
     function restaurar() {
+      setTimeout(() => { exportando = false; }, 800);
       ocultas.forEach((l) => l.setVisible(true));
       if (soTema) grupoTema.getLayers().forEach((l) => { if (l.get("opOrig") != null) { l.setOpacity(l.get("opOrig")); l.unset("opOrig"); } });
       div.style.width = ""; div.style.height = ""; div.style.flex = "";
@@ -561,6 +564,11 @@ function desenharSimbolo(ctx, it, x, y, e = 1) {
     ctx.beginPath(); ctx.arc(x + 3 * MM * e, y + 1.8 * MM * e, 1.7 * MM * e, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
     return;
   }
+  if (it.tipo === "bola") {
+    ctx.fillStyle = it.fill; ctx.strokeStyle = "#fff"; ctx.lineWidth = 0.35 * MM;
+    ctx.beginPath(); ctx.arc(x + 4 * MM * e, y + 1.8 * MM * e, 1.3 * MM * e, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+    return;
+  }
   if (it.tipo === "marca") {
     ctx.fillStyle = it.fill; ctx.strokeStyle = "#fff"; ctx.lineWidth = 0.3 * MM;
     ctx.beginPath(); ctx.moveTo(x + 4 * MM * e, y); ctx.lineTo(x + 6.2 * MM * e, y + 3.6 * MM * e); ctx.lineTo(x + 1.8 * MM * e, y + 3.6 * MM * e);
@@ -714,7 +722,7 @@ document.querySelectorAll("input[name=modelo]").forEach((r) => r.addEventListene
   desenhar(true);
   agendarTema();
 }));
-mapa.on("moveend", () => { if (temaEstado.id) agendarTema(); });
+mapa.on("moveend", () => { if (temaEstado.id && !exportando) agendarTema(); });
 $("opacidade").addEventListener("input", () => {
   grupoTema.getLayers().forEach((l) => { if (l.getClassName() === "tema") l.setOpacity(Number($("opacidade").value) / 100); });
 });
