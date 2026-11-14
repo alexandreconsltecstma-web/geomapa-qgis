@@ -80,6 +80,9 @@ const SITS = {
 };
 const FEITO = (s) => s === "pronto" || s === "na";
 
+let PASTAS = { raiz: "", empresas: {} };   // pastas compartilhadas no Google Drive (pastas.json)
+fetch("pastas.json?v=1", { cache: "no-cache" }).then((r) => r.json()).then((p) => { PASTAS = p; if (aba === "doc") documentos(); }).catch(() => {});
+const linkPasta = (k) => (PASTAS.empresas[k] ? `https://drive.google.com/drive/folders/${PASTAS.empresas[k]}` : "");
 let DOCS = ler("pa_docs", {});          // { chave: { nome, cnpj, orgao, itens: { id: { s, obs } }, extra? } }
 let docSel = ler("pa_docs_sel", "");
 const salvarDocs = () => gravar("pa_docs", DOCS);
@@ -149,10 +152,12 @@ async function corpoEmpresa(e) {
       <label class="doc-orgao">Órgão <select id="docOrgao">${Object.entries(CHECK).map(([k, c]) => `<option value="${k}" ${k === st.orgao ? "selected" : ""}>${esc(c.nome)}</option>`).join("")}</select></label></div>
     <div class="val"><span><b>${ok}</b> de ${its.length} itens prontos ou que não se aplicam</span><span>${arqs.length} arquivo(s) na pasta</span></div>
     <div class="prog"><i style="width:${(ok / its.length) * 100}%;background:var(--ok)"></i></div>
-    <div class="ferramentas"><button class="btn" data-acao-doc="copiar">📋 Copiar o que falta</button>
+    <div class="ferramentas">${linkPasta(e.k) ? `<a class="btn" href="${linkPasta(e.k)}" target="_blank" rel="noopener" title="Pasta compartilhada no Google Drive: todos da PA veem os mesmos arquivos">📂 Pasta compartilhada</a>` : `<span class="mut" title="Peça para criar a pasta desta empresa no Drive">sem pasta compartilhada</span>`}
+      <button class="btn claro" data-acao-doc="copiar">📋 Copiar o que falta</button>
       <button class="btn claro" data-acao-doc="imprimir">🖨 Imprimir checklist</button>
       ${e.extra ? `<button class="btn perigo" data-acao-doc="tirarEmp">Remover empresa</button>` : ""}</div>
     <p class="mut doc-fonte">${esc(C.fonte)}</p>
+    <p class="mut doc-fonte">📂 <b>Pasta compartilhada</b> = arquivos no Google Drive que todos da PA veem. Os anexos com ＋ abaixo ficam só neste navegador (rascunho rápido).</p>
     <table class="doc-tab"><thead><tr><th>Nº</th><th>Documento</th><th>Situação</th><th>Observação</th><th>Arquivos</th></tr></thead><tbody>
     ${its.map((i) => { const s = st.itens[i.id] || {}; const cab = i.g !== grupo && CHECK[st.orgao].grupos.length > 1 ? `<tr class="doc-g"><td colspan="5">${esc((grupo = i.g))}</td></tr>` : ((grupo = i.g), "");
       return `${cab}<tr class="${FEITO(s.s) ? "feito" : ""}"><td>${esc(i.id.toUpperCase())}</td>

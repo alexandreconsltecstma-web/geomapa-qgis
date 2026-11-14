@@ -34,7 +34,8 @@ async function caixaLicenca(i) {
   const vs = versoes(l);
   box.innerHTML = `<div class="lic-box card">
     <div class="lic-cab"><h4>📄 Licença</h4>
-      <div class="ferramentas" style="margin:0"><label class="btn claro peq">＋ Anexar PDF da licença atual<input type="file" accept=".pdf,image/*" hidden id="licArq"></label>
+      <div class="ferramentas" style="margin:0">${typeof linkPasta === "function" && linkPasta(chaveEmp(l.nome, l.cnpj)) ? `<a class="btn peq" href="${linkPasta(chaveEmp(l.nome, l.cnpj))}" target="_blank" rel="noopener" title="Pasta da empresa no Google Drive, compartilhada com a PA">📂 Pasta compartilhada</a>` : ""}
+      <label class="btn claro peq">＋ Anexar PDF da licença atual<input type="file" accept=".pdf,image/*" hidden id="licArq"></label>
       <button class="btn peq" id="licRenovar" type="button">🔄 Registrar renovação</button></div></div>
     <table class="lic-vers"><thead><tr><th>Versão</th><th>Nº</th><th>Emissão</th><th>Vencimento</th><th>Arquivo</th></tr></thead><tbody>
     ${vs.slice().reverse().map((v) => { const a = arqs.filter((x) => x.item === "v" + v.n);
