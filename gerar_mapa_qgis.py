@@ -303,10 +303,17 @@ def main():
         pic.attemptMove(mm(289 - w_l - 2, 7))
         pic.attemptResize(tam(w_l, 13))
         larg_tit = 279 - w_l - 6
-    texto(lay, 9, 5.2, larg_tit, 9, (cfg.get("titulo") or "Mapa").upper(), 15, "white", True, valign=Qt.AlignVCenter)
+    texto(lay, 9, 5.2, larg_tit, 9, (cfg.get("titulo") or "Mapa").upper(),
+          15 if len(cfg.get("titulo") or "") <= 58 else 12, "white", True, valign=Qt.AlignVCenter)
     texto(lay, 9, 13.2, larg_tit, 7, cfg.get("subtitulo", ""), 8.5, "#f1ecd8", valign=Qt.AlignVCenter)
 
-    mx, my, mw, mh = 13, 29, 188, 168
+    refs = cfg.get("referencias") or []
+    mx, my, mw, mh = 13, 29, 188, (148 if refs else 168)
+    if refs:  # quadro de referências abaixo do mapa
+        caixa(lay, mx, my + mh + 5, mw, 202 - (my + mh + 5), "white", "#999999", 0.2)
+        texto(lay, mx + 2, my + mh + 5.8, mw - 4, 202 - (my + mh + 6.5),
+              f"<b style='color:{cab}'>REFERÊNCIAS</b><br>" + "&nbsp;&nbsp; ".join(f"[{i + 1}] {esc(r)}" for i, r in enumerate(refs)),
+              5.4 if len(" ".join(refs)) > 700 else 6.0, html=True)
     mapa = QgsLayoutItemMap(lay)
     mapa.setCrs(utm)
     mapa.setLayers(cam)

@@ -1605,8 +1605,7 @@ function mostrarTema() {
   if (temaEstado.carregando) partes.push('<p class="info">Carregando o tema…</p>');
   if (temaEstado.aviso) partes.push(`<p class="info erro">${esc(temaEstado.aviso)}</p>`);
   if (temaEstado.legenda.length) {
-    partes.push('<ul class="leg">' + temaEstado.legenda.slice(0, 30).map((it) =>
-      `<li><i style="background:${it.fill || it.cor};border-color:${it.stroke || "#888"}${it.tipo === "linha" ? ";height:3px;border:0;background:" + it.stroke : ""}"></i>${esc(it.rotulo)}</li>`).join("") + "</ul>");
+    partes.push('<ul class="leg">' + listaLegendaHTML(temaEstado.legenda.slice(0, 30)) + "</ul>");
   }
   for (const [r, v] of temaEstado.info) partes.push(`<p class="info"><b>${esc(r)}:</b> ${esc(v)}</p>`);
   if (temaEstado.quadro?.tipo === "tabela")
@@ -1615,6 +1614,7 @@ function mostrarTema() {
   if (!estado.ponto) partes.push('<p class="dica">Marque o ponto para ver os dados do local.</p>');
   caixa.innerHTML = partes.join("");
   $("btn-clima").hidden = !(temaEstado.quadro && temaEstado.quadro.tipo === "climograma");
+  if (typeof atualizarLegendaMapa === "function") atualizarLegendaMapa();
 }
 
 function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }

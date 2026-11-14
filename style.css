@@ -147,3 +147,19 @@ textarea { font: inherit; padding: 6px 8px; border: 1px solid var(--borda); bord
 .tres { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .elementos { border: 0; padding: 0; margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
 .elementos legend { font-size: .85rem; margin-bottom: 4px; }
+
+/* símbolos de legenda e legenda flutuante */
+.sim { width: 22px; height: 14px; flex: none; }
+.leg li { display: flex; align-items: center; gap: 6px; }
+.leg li .sim + span { line-height: 1.25; }
+.legenda-mapa { right: 8px; bottom: 30px; top: auto; left: auto; max-width: min(280px, 60%); max-height: 45%; display: flex; flex-direction: column;
+  background: rgba(255,255,255,.94); color: #222; border-radius: 8px; box-shadow: 0 1px 6px rgba(0,0,0,.25); padding: 0; overflow: hidden; }
+.legenda-mapa .leg-topo { all: unset; cursor: pointer; font: 600 .8rem system-ui, sans-serif; padding: 6px 10px; display: flex; justify-content: space-between; gap: 12px; color: #222; }
+.legenda-mapa .leg-topo:focus-visible { outline: 2px solid var(--ouro); }
+.legenda-mapa.fechada .leg-lista { display: none; }
+.legenda-mapa.fechada .leg-topo span { transform: rotate(-90deg); }
+.legenda-mapa .leg-lista { list-style: none; margin: 0; padding: 0 10px 8px; overflow: auto; font: .74rem/1.25 system-ui, sans-serif; display: flex; flex-direction: column; gap: 4px; }
+.legenda-mapa li { display: flex; align-items: center; gap: 6px; }
+.legenda-mapa li.tit { font-weight: 700; margin-top: 4px; color: #333; }
+.leg li.tit { font-weight: 700; margin-top: 4px; }
+@media (max-width: 700px) { .legenda-mapa { max-height: 35%; } }

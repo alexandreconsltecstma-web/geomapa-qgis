@@ -21,7 +21,7 @@ const COR = { verde: "#3e5a1e", ouro: "#795c01", texto: "#333333" };
 
 // personalização do mapa (salva no navegador)
 const PERS_PADRAO = { cabecalho: "#3e5a1e", faixa: "#795c01", ponto: "#e31a1c", simbolo: "circulo", tamPonto: 7,
-  ada: "#ff8c00", aid: "#9b78c8", aii: "#e6e678", grade: true, norte: true, escala: true, situacao: true, vertices: false, logo: "" };
+  ada: "#ff8c00", aid: "#9b78c8", aii: "#e6e678", grade: true, norte: true, escala: true, situacao: true, vertices: false, referencias: true, logo: "" };
 const pers = { ...PERS_PADRAO };
 try { Object.assign(pers, JSON.parse(localStorage.getItem("geomapa_pers") || "{}")); } catch (e) { /* sem armazenamento */ }
 function rgbaHex(h, a) { const n = parseInt(h.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; }
@@ -161,7 +161,7 @@ function desenhar(enquadrar) {
   for (const id of ["btn-png", "btn-pdf", "btn-qgis"]) $(id).disabled = !ok;
   if (ok && $("status").dataset.inicial !== "0") { status(""); $("status").dataset.inicial = "0"; }
   if (enquadrar && ok) enquadrarMapa();
-  if (typeof infoADA === "function") { infoADA(); mostrarTrava(); if (estado.travado) salvarTrava(); }
+  if (typeof infoADA === "function") { infoADA(); mostrarTrava(); if (estado.travado) salvarTrava(); atualizarLegendaMapa(); }
 }
 
 function nomesAreas() {
@@ -305,7 +305,8 @@ async function lerArquivo(arq) {
 
 const DPI = 200, MM = DPI / 25.4;
 const PAG = { w: Math.round(297 * MM), h: Math.round(210 * MM) };
-const QUADRO = { x: 13, y: 29, w: 188, h: 168 };  // mm, igual ao script do QGIS
+// mm, igual ao script do QGIS; com o quadro de referências o mapa fica mais baixo
+const QUADRO = { x: 13, y: 29, w: 188, get h() { return pers.referencias ? 148 : 168; } };
 
 function renderizarMapa(larguraPx, alturaPx, soTema) {
   // Renderiza o mapa no tamanho do quadro do layout, mantendo o centro e a área visível na tela.
@@ -525,6 +526,8 @@ async function montarLayout() {
   ctx.fillText(`Escala aprox. 1:${escalaNum.toLocaleString("pt-BR")}`, bx, by + 2.8 * MM);
   }
 
+  if (pers.referencias) desenharReferencias(ctx, QUADRO.x, QUADRO.y + QUADRO.h + 5, QUADRO.w, 202 - (QUADRO.y + QUADRO.h + 5));
+
   // painel lateral: situação no Brasil
   const px = 207, pw = 83;
   ctx.textBaseline = "top";
@@ -549,6 +552,13 @@ async function montarLayout() {
   const esc = Math.min(1, passoL / 6.5) ** 0.7;
   let ly = LEG.y + 10;
   for (const it of itens.slice(0, n)) {
+    if (it.tipo === "titulo") {  // subtítulo do tema dentro da legenda
+      fonte(ctx, 7.6 * Math.max(0.82, esc), true); ctx.fillStyle = pers.cabecalho; ctx.textBaseline = "middle";
+      ctx.fillText(cortar(ctx, it.rotulo, (pw - 8) * MM), (px + 4) * MM, (ly + 1.8 * esc) * MM);
+      ctx.textBaseline = "top";
+      ly += passoL;
+      continue;
+    }
     desenharSimbolo(ctx, it, (px + 4) * MM, ly * MM, esc);
     fonte(ctx, 7.5 * Math.max(0.78, esc)); ctx.fillStyle = COR.texto; ctx.textBaseline = "middle";
     ctx.fillText(cortar(ctx, it.rotulo, (pw - 15) * MM), (px + 4 + 8 * esc + 2) * MM, (ly + 1.8 * esc) * MM);
@@ -599,9 +609,10 @@ async function montarLayout() {
     ty += partes.length * 3.1 * MM + 0.4 * MM;
   }
   const fontes = `Sistema de referência: WGS 84 / Pseudo-Mercator (EPSG:3857) na imagem; coordenadas geográficas. ` +
-    (temaEstado.id ? `Tema: ${TEMAS[temaEstado.id].fonte}. ` : "") +
+    (pers.referencias ? "Fontes no quadro de referências. Gerado com GeoMapa QGIS." : "") +
+    (pers.referencias ? "" : (temaEstado.id ? `Tema: ${TEMAS[temaEstado.id].fonte}. ` : "") +
     `Fundo: ${BASES[$("base").value].credito}` + (camadas.municipio.getSource().getFeatures().length ? "; limite municipal: IBGE" : "") +
-    `. Gerado com GeoMapa QGIS.`;
+    `. Gerado com GeoMapa QGIS.`);
   let tamF = 6.3, linhasF;
   do { fonte(ctx, tamF); linhasF = quebrar(ctx, fontes, (pw - 4) * MM); tamF -= 0.3; }
   while (ty + 1.5 * MM + linhasF.length * (tamF + 0.3) * 0.46 * MM > 201 * MM && tamF > 4.6);
@@ -632,14 +643,18 @@ function desenharSituacao(ctx, ufs, x, y, w, h) {
 function itensLegenda() {
   const nm = nomesAreas();
   const it = [{ tipo: "ponto", rotulo: $("rotulo").value.trim() || $("empreendimento").value.trim() || "Empreendimento" }];
-  if (estado.lote) it.push({ tipo: "area", fill: rgbaHex(pers.ada, 0.6), stroke: escurecer(pers.ada), rotulo: nm.ada });
+  const adaVisivel = estado.lote && (() => {  // na escala regional a ADA vira um pixel: fica fora da legenda
+    const e = fmtGeo.readFeature(estado.lote).getGeometry().getExtent();
+    return Math.max(ol.extent.getWidth(e), ol.extent.getHeight(e)) / mapa.getView().getResolution() >= 4;
+  })();
+  if (adaVisivel) it.push({ tipo: "area", fill: rgbaHex(pers.ada, 0.6), stroke: escurecer(pers.ada), rotulo: nm.ada });
   if (modelo() === "influencia") {
     it.push({ tipo: "area", fill: rgbaHex(pers.aid, 0.35), stroke: escurecer(pers.aid), rotulo: nm.aid });
     it.push({ tipo: "area", fill: rgbaHex(pers.aii, 0.35), stroke: escurecer(pers.aii), rotulo: nm.aii });
   }
   if (camadas.municipio.getSource().getFeatures().length)
     it.push({ tipo: "area", fill: "rgba(255,255,255,0)", stroke: "#111", rotulo: `Limite municipal – ${estado.municipio.nome}` });
-  if (temaEstado.id) it.push(...temaEstado.legenda);
+  if (temaEstado.id && temaEstado.legenda.length) it.push({ tipo: "titulo", rotulo: TEMAS[temaEstado.id].nome }, ...temaEstado.legenda);
   return it;
 }
 
@@ -741,6 +756,7 @@ async function exportarQGIS() {
   };
   cfg.tema = await arquivosTemaQGIS(zip);
   cfg.observacoes = $("observacoes").value.trim();
+  cfg.referencias = pers.referencias ? referencias() : [];
   cfg.estilo = { ...pers, logo: undefined };
   if (pers.logo) { zip.file("logo.png", pers.logo.split(",")[1], { base64: true }); cfg.logo = "logo.png"; }
   zip.file("mapa.json", JSON.stringify(cfg, null, 1));
@@ -930,6 +946,98 @@ document.addEventListener("keydown", (e) => {
   else if (e.key === "Backspace" && ada.draw) { e.preventDefault(); ada.draw.removeLastPoint(); }
 });
 
+/* ── símbolos de legenda em SVG e legenda flutuante no mapa ─────────── */
+
+function simboloHTML(it) {
+  const e = (c) => String(c || "#888").replace(/"/g, "");
+  if (it.tipo === "ponto") {
+    const n = { quadrado: 4, triangulo: 3, estrela: 10 }[pers.simbolo] || 0;
+    let forma = '<circle cx="11" cy="7" r="5"/>';
+    if (n) {
+      const pts = [];
+      for (let i = 0; i < n; i++) {
+        const ang = -Math.PI / 2 + (pers.simbolo === "quadrado" ? Math.PI / 4 : 0) + (i * 2 * Math.PI) / n;
+        const r = pers.simbolo === "estrela" ? (i % 2 ? 2.6 : 6.4) : pers.simbolo === "quadrado" ? 6 : 6.4;
+        pts.push(`${(11 + r * Math.cos(ang)).toFixed(1)},${(7.5 + r * Math.sin(ang)).toFixed(1)}`);
+      }
+      forma = `<polygon points="${pts.join(" ")}"/>`;
+    }
+    return `<svg viewBox="0 0 22 14" class="sim"><g fill="${e(pers.ponto)}" stroke="#fff" stroke-width="1.2">${forma}</g></svg>`;
+  }
+  if (it.tipo === "bola") return `<svg viewBox="0 0 22 14" class="sim"><circle cx="11" cy="7" r="4.6" fill="${e(it.fill)}" stroke="#fff" stroke-width="1.2"/></svg>`;
+  if (it.tipo === "marca") return `<svg viewBox="0 0 22 14" class="sim"><polygon points="11,1.5 17,12.5 5,12.5" fill="${e(it.fill)}" stroke="#fff" stroke-width="1"/></svg>`;
+  if (it.tipo === "linha") return `<svg viewBox="0 0 22 14" class="sim"><line x1="1" y1="7" x2="21" y2="7" stroke="${e(it.stroke)}" stroke-width="2.6"${it.tracejado ? ' stroke-dasharray="4 3"' : ""}/></svg>`;
+  return `<svg viewBox="0 0 22 14" class="sim"><rect x="1.5" y="2" width="19" height="10" rx="1" fill="${e(it.fill || it.cor)}" stroke="${e(it.stroke || "#888")}" stroke-width="1.2"/></svg>`;
+}
+function listaLegendaHTML(itens) {
+  return itens.map((it) => it.tipo === "titulo" ? `<li class="tit">${esc(it.rotulo)}</li>` : `<li>${simboloHTML(it)}<span>${esc(it.rotulo)}</span></li>`).join("");
+}
+const legendaMapa = document.createElement("div");
+legendaMapa.className = "ol-unselectable ol-control legenda-mapa";
+legendaMapa.innerHTML = '<button type="button" class="leg-topo" aria-expanded="true">Legenda <span>▾</span></button><ul class="leg-lista"></ul>';
+legendaMapa.querySelector(".leg-topo").addEventListener("click", () => {
+  const aberta = legendaMapa.classList.toggle("fechada");
+  legendaMapa.querySelector(".leg-topo").setAttribute("aria-expanded", String(!aberta));
+});
+mapa.addControl(new ol.control.Control({ element: legendaMapa }));
+function atualizarLegendaMapa() {
+  const itens = estado.ponto ? itensLegenda() : (temaEstado.id && temaEstado.legenda.length ? [{ tipo: "titulo", rotulo: TEMAS[temaEstado.id].nome }, ...temaEstado.legenda] : []);
+  legendaMapa.hidden = !itens.length;
+  legendaMapa.querySelector(".leg-lista").innerHTML = listaLegendaHTML(itens.slice(0, 40));
+}
+
+/* ── referências (quadro abaixo do mapa) ──────────────────────────────── */
+
+const REF = {
+  ibge: "IBGE. Malhas territoriais (API de malhas, v3). Rio de Janeiro: IBGE.",
+  osm: "OPENSTREETMAP. Dados © colaboradores do OpenStreetMap, licença ODbL.",
+  cf: "BRASIL. Lei nº 12.651, de 25 de maio de 2012 (Código Florestal).",
+  chelsa: "KARGER, D. N. et al. Climatologies at high resolution for the earth's land surface areas (CHELSA). Scientific Data, v. 4, 170122, 2017. Versão 2.1 (1981–2010).",
+  era5: "HERSBACH, H. et al. The ERA5 global reanalysis. Quarterly Journal of the Royal Meteorological Society, v. 146, p. 1999–2049, 2020 (dados via Open-Meteo).",
+  srtm: "MAPZEN; AWS. Terrain Tiles (SRTM/NASA, ~30 m). Registry of Open Data on AWS.",
+};
+const REFS_TEMA = {
+  influencia: ["BRASIL. Resolução CONAMA nº 001, de 23 de janeiro de 1986, art. 5º, III (área de influência do projeto)."],
+  uso: ["ESRI; IMPACT OBSERVATORY; MICROSOFT. Sentinel-2 10 m Land Use/Land Cover (2024). Esri Living Atlas."],
+  hidrografia: ["ANA. Base Hidrográfica Ottocodificada e massas d'água. Sistema Nacional de Informações sobre Recursos Hídricos (SNIRH).",
+    "FBDS. Mapeamento em alta resolução de hidrografia e APP (Alagoas). Rio de Janeiro: FBDS.", REF.osm, REF.cf],
+  protegidas: ["ICMBio. Unidades de conservação federais e Cadastro Nacional de Informações Espeleológicas (CANIE). INDE.",
+    "ANA/SNIRH. Unidades de conservação estaduais e municipais (MMA) e terras indígenas (FUNAI).",
+    "BRASIL. Resolução CONAMA nº 428/2010 (zona de amortecimento) e nº 347/2004 (patrimônio espeleológico)."],
+  prioritarias: ["BRASIL. Ministério do Meio Ambiente. Portaria MMA nº 463/2018: Áreas Prioritárias para a Conservação, Uso Sustentável e Repartição de Benefícios da Biodiversidade (2ª atualização). Dados: INDE/ICMBio."],
+  relevo: [REF.srtm, "ESRI. World Hillshade."],
+  declividade: [REF.srtm, "EMBRAPA. Súmula da 10ª Reunião Técnica de Levantamento de Solos. Rio de Janeiro: SNLCS, 1979 (classes de relevo)."],
+  solos: ["IBGE. Banco de Dados de Informações Ambientais (BDiA): pedologia 1:250.000.",
+    "SANTOS, H. G. et al. Sistema Brasileiro de Classificação de Solos. 5. ed. Brasília: Embrapa, 2018."],
+  geologia: ["SGB/CPRM. Mapa geológico do Brasil 1:1.000.000: litoestratigrafia (GeoSGB). Serviço Geológico do Brasil."],
+  koppen: [REF.chelsa, REF.era5], precipitacao: [REF.chelsa, REF.era5], temperatura: [REF.chelsa, REF.era5],
+  ar: ["NASA GIBS. MERRA-2 aerosol optical thickness (550 nm).", "COPERNICUS. Atmosphere Monitoring Service (CAMS), via Open-Meteo.",
+    "OMS. WHO global air quality guidelines. Genebra: World Health Organization, 2021."],
+  biomas: ["IBGE. Biomas e sistema costeiro-marinho do Brasil: compatível com a escala 1:250 000. Rio de Janeiro: IBGE, 2019."],
+  saneamento: ["CASAL. Plano de Negócios 2024. Maceió: Companhia de Saneamento de Alagoas, 2024.",
+    "AGÊNCIA iNFRA. Concessão de saneamento em Alagoas recebe mais seis municípios no bloco. 1º set. 2025.", REF.osm],
+  car: ["SFB. Sistema Nacional de Cadastro Ambiental Rural (SICAR): base pública de imóveis. Serviço Florestal Brasileiro.", REF.cf],
+  acesso: ["OSRM. Open Source Routing Machine (rotas sobre o OpenStreetMap).", "NOMINATIM. Geocodificação do OpenStreetMap.", REF.osm],
+  entorno: [REF.osm + " Equipamentos sociais consultados pela Overpass API."],
+};
+function referencias() {
+  const m = modelo(), l = [...(REFS_TEMA[m] || (TEMAS[m] ? [TEMAS[m].fonte + "."] : []))];
+  l.push(`Mapa de fundo: ${BASES[$("base").value].credito}.`);
+  l.push(REF.ibge);
+  return [...new Set(l)];
+}
+function desenharReferencias(ctx, x, y, w, h) {
+  caixa(ctx, x, y, w, h, "#fff", "#999", 0.2);
+  fonte(ctx, 7, true); ctx.fillStyle = pers.cabecalho; ctx.textBaseline = "top"; ctx.textAlign = "left";
+  ctx.fillText("REFERÊNCIAS", (x + 2) * MM, (y + 1.3) * MM);
+  const texto = referencias().map((r, i) => `[${i + 1}] ${r}`).join("   ");
+  let t = 6.2, linhas, alt;
+  do { fonte(ctx, t); linhas = quebrar(ctx, texto, (w - 4) * MM); alt = (t + 0.4) * 0.42; t -= 0.25; }
+  while (linhas.length * alt > h - 5.5 && t > 4.2);
+  ctx.fillStyle = COR.texto;
+  linhas.forEach((ln, i) => ctx.fillText(ln, (x + 2) * MM, (y + 4.8 + i * alt) * MM));
+}
+
 /* ── coordenadas UTM dos vértices da ADA ──────────────────────────────── */
 
 // SIRGAS 2000 (elipsoide GRS80) para UTM, no fuso indicado
@@ -977,7 +1085,7 @@ function imagemLogo() {
   if (!logoCache) logoCache = new Promise((ok) => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => ok(null); im.src = pers.logo; });
   return logoCache;
 }
-const CORES_PERS = ["cabecalho", "faixa", "ponto", "ada", "aid", "aii"], CHECKS_PERS = ["grade", "norte", "escala", "situacao", "vertices"];
+const CORES_PERS = ["cabecalho", "faixa", "ponto", "ada", "aid", "aii"], CHECKS_PERS = ["grade", "norte", "escala", "situacao", "vertices", "referencias"];
 function mostrarPers() {
   for (const k of CORES_PERS) $(`p-${k}`).value = pers[k];
   for (const k of CHECKS_PERS) $(`p-${k}`).checked = !!pers[k];
@@ -990,6 +1098,7 @@ function salvarPers() {
   try { localStorage.setItem("geomapa_pers", JSON.stringify(pers)); }
   catch (e) { $("p-logo-info").textContent = "Não foi possível guardar o logotipo neste navegador (imagem grande demais); ele vale só nesta visita."; }
   Object.values(camadas).forEach((c) => c.changed());
+  atualizarLegendaMapa();
 }
 function lerPers() {
   for (const k of CORES_PERS) pers[k] = $(`p-${k}`).value;
