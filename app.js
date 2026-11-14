@@ -19,6 +19,51 @@ const BASES = {
 };
 const COR = { verde: "#3e5a1e", ouro: "#795c01", texto: "#333333" };
 
+// personalização do mapa (salva no navegador)
+const PERS_PADRAO = { cabecalho: "#3e5a1e", faixa: "#795c01", ponto: "#e31a1c", simbolo: "circulo", tamPonto: 7,
+  ada: "#ff8c00", aid: "#9b78c8", aii: "#e6e678", grade: true, norte: true, escala: true, situacao: true, vertices: false, logo: "" };
+const pers = { ...PERS_PADRAO };
+try { Object.assign(pers, JSON.parse(localStorage.getItem("geomapa_pers") || "{}")); } catch (e) { /* sem armazenamento */ }
+function rgbaHex(h, a) { const n = parseInt(h.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; }
+function escurecer(h, f = 0.55) {
+  const n = parseInt(h.slice(1), 16);
+  return "#" + [n >> 16, (n >> 8) & 255, n & 255].map((v) => Math.round(v * f).toString(16).padStart(2, "0")).join("");
+}
+function simboloPonto(raio) {
+  const fill = new ol.style.Fill({ color: pers.ponto }), stroke = new ol.style.Stroke({ color: "#fff", width: 2 * K });
+  if (pers.simbolo === "quadrado") return new ol.style.RegularShape({ points: 4, radius: raio * 1.25, angle: Math.PI / 4, fill, stroke });
+  if (pers.simbolo === "estrela") return new ol.style.RegularShape({ points: 5, radius: raio * 1.5, radius2: raio * 0.65, fill, stroke });
+  if (pers.simbolo === "triangulo") return new ol.style.RegularShape({ points: 3, radius: raio * 1.35, fill, stroke });
+  return new ol.style.Circle({ radius: raio, fill, stroke });
+}
+function pontoCanvas(ctx, cx, cy, r, borda) {
+  ctx.fillStyle = pers.ponto; ctx.strokeStyle = "#fff"; ctx.lineWidth = borda;
+  ctx.beginPath();
+  const n = { quadrado: 4, triangulo: 3, estrela: 10 }[pers.simbolo] || 0;
+  if (!n) ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+  else for (let i = 0; i < n; i++) {
+    const ang = -Math.PI / 2 + (pers.simbolo === "quadrado" ? Math.PI / 4 : 0) + (i * 2 * Math.PI) / n;
+    const rr = pers.simbolo === "estrela" ? (i % 2 ? r * 0.65 : r * 1.5) : pers.simbolo === "quadrado" ? r * 1.25 : r * 1.35;
+    ctx.lineTo(cx + rr * Math.cos(ang), cy + rr * Math.sin(ang));
+  }
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+}
+function estiloADA(f) {
+  const base = estilo(rgbaHex(pers.ada, 0.6), escurecer(pers.ada), 2)();
+  if (!pers.vertices || mapa.getView().getResolution() / K > 6) return base;  // vértices só em escala de detalhe
+  const g = f.getGeometry(), polis = g.getType() === "Polygon" ? [g.getCoordinates()] : g.getCoordinates();
+  const out = [base];
+  let i = 0;
+  for (const poli of polis) for (const c of poli[0].slice(0, -1)) {
+    i++;
+    out.push(new ol.style.Style({ geometry: new ol.geom.Point(c),
+      image: new ol.style.Circle({ radius: 2.6 * K, fill: new ol.style.Fill({ color: "#fff" }), stroke: new ol.style.Stroke({ color: escurecer(pers.ada), width: 1.4 * K }) }),
+      text: new ol.style.Text({ text: `V${i}`, offsetY: -10 * K, font: `bold ${Math.round(10 * K)}px Arial`,
+        fill: new ol.style.Fill({ color: escurecer(pers.ada, 0.45) }), stroke: new ol.style.Stroke({ color: "#fff", width: 3 * K }) }) }));
+  }
+  return out;
+}
+
 const $ = (id) => document.getElementById(id);
 const fmtGeo = new ol.format.GeoJSON({ featureProjection: "EPSG:3857", dataProjection: "EPSG:4326" });
 
@@ -47,16 +92,15 @@ const fonteBase = new ol.source.XYZ({ crossOrigin: "anonymous" });
 const camadaBase = new ol.layer.Tile({ source: fonteBase });
 const camadas = {
   municipio: new ol.layer.Vector({ source: new ol.source.Vector(), style: estilo("rgba(0,0,0,0)", "#111", 2.2) }),
-  aii: new ol.layer.Vector({ source: new ol.source.Vector(), style: estilo("rgba(230,230,120,0.24)", "#8a8a1f", 1.6) }),
-  aid: new ol.layer.Vector({ source: new ol.source.Vector(), style: estilo("rgba(155,120,200,0.28)", "#5b3f8c", 1.6) }),
-  lote: new ol.layer.Vector({ source: new ol.source.Vector(), style: estilo("rgba(255,140,0,0.6)", "#c2410c", 2) }),
+  aii: new ol.layer.Vector({ source: new ol.source.Vector(), style: () => estilo(rgbaHex(pers.aii, 0.28), escurecer(pers.aii), 1.6)() }),
+  aid: new ol.layer.Vector({ source: new ol.source.Vector(), style: () => estilo(rgbaHex(pers.aid, 0.3), escurecer(pers.aid), 1.6)() }),
+  lote: new ol.layer.Vector({ source: new ol.source.Vector(), style: estiloADA }),
   ponto: new ol.layer.Vector({
     source: new ol.source.Vector(),
     style: (f) => new ol.style.Style({
-      image: new ol.style.Circle({ radius: 7 * K, fill: new ol.style.Fill({ color: "#e31a1c" }),
-                                   stroke: new ol.style.Stroke({ color: "#fff", width: 2 * K }) }),
+      image: simboloPonto(pers.tamPonto * K),
       text: new ol.style.Text({
-        text: $("rotulo").value.trim(), offsetY: -16 * K, font: `bold ${Math.round(13 * K)}px Arial`,
+        text: $("rotulo").value.trim(), offsetY: -(pers.tamPonto * 1.4 + 7) * K, font: `bold ${Math.round(13 * K)}px Arial`,
         fill: new ol.style.Fill({ color: "#b00000" }), stroke: new ol.style.Stroke({ color: "#fff", width: 3 * K }),
       }),
     }),
@@ -405,13 +449,21 @@ async function montarLayout() {
   ctx.fillStyle = "#fff";
   ctx.fillRect(0, 0, PAG.w, PAG.h);
   caixa(ctx, 4, 4, 289, 202, "#fff", "#333", 0.5);
-  caixa(ctx, 4, 4, 289, 17, COR.verde, COR.verde, 0.1);
-  caixa(ctx, 4, 21, 289, 1, COR.ouro, COR.ouro, 0.1);
+  caixa(ctx, 4, 4, 289, 17, pers.cabecalho, pers.cabecalho, 0.1);
+  caixa(ctx, 4, 21, 289, 1, pers.faixa, pers.faixa, 0.1);
+  let largTit = 279;
+  const logo = await imagemLogo();
+  if (logo) {  // logotipo à direita do cabeçalho, sobre um fundo branco
+    const hL = 13, wL = Math.min(50, (hL * logo.width) / logo.height);
+    caixa(ctx, 289 - wL - 3, 6, wL + 2, hL + 2, "#fff", "#fff", 0.1);
+    ctx.drawImage(logo, (289 - wL - 2) * MM, 7 * MM, wL * MM, hL * MM);
+    largTit = 279 - wL - 6;
+  }
   ctx.fillStyle = "#fff"; ctx.textBaseline = "middle";
   fonte(ctx, 15, true);
-  ctx.fillText(($("titulo").value || "Mapa").toUpperCase(), 9 * MM, 9.6 * MM, 279 * MM);
-  fonte(ctx, 8.5); ctx.fillStyle = "#e8e2c8";
-  ctx.fillText($("subtitulo").value, 9 * MM, 16.8 * MM, 279 * MM);
+  ctx.fillText(($("titulo").value || "Mapa").toUpperCase(), 9 * MM, 9.6 * MM, largTit * MM);
+  fonte(ctx, 8.5); ctx.fillStyle = "#f1ecd8";
+  ctx.fillText($("subtitulo").value, 9 * MM, 16.8 * MM, largTit * MM);
 
   // mapa + moldura
   ctx.drawImage(tela, Q.x, Q.y);
@@ -420,6 +472,7 @@ async function montarLayout() {
 
   // grade de coordenadas (marcas e rótulos nas bordas)
   const nw = geo.canto(0, 0), se = geo.canto(Q.w, Q.h);
+  if (pers.grade) {
   const passo = passoGrade(Math.max(se[0] - nw[0], nw[1] - se[1]));
   fonte(ctx, 6.5); ctx.fillStyle = COR.texto; ctx.strokeStyle = "#333"; ctx.lineWidth = 0.25 * MM;
   for (let lon = Math.ceil(nw[0] / passo) * passo; lon < se[0]; lon += passo) {
@@ -437,8 +490,10 @@ async function montarLayout() {
     }
   }
   ctx.textAlign = "left";
+  }
 
   // seta norte
+  if (pers.norte) {
   const nx = Q.x + Q.w - 15 * MM, ny = Q.y + 3 * MM;
   caixa(ctx, nx / MM, ny / MM, 12, 15, "rgba(255,255,255,0.85)", "#999", 0.15);
   ctx.fillStyle = "#222"; ctx.beginPath();
@@ -447,8 +502,10 @@ async function montarLayout() {
   ctx.moveTo(nx + 6 * MM, ny + 4 * MM); ctx.lineTo(nx + 3 * MM, ny + 13 * MM); ctx.lineTo(nx + 6 * MM, ny + 11 * MM); ctx.closePath(); ctx.fill(); ctx.stroke();
   fonte(ctx, 8, true); ctx.fillStyle = "#222"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
   ctx.fillText("N", nx + 6 * MM, ny + 2.2 * MM); ctx.textAlign = "left";
+  }
 
   // barra de escala
+  if (pers.escala) {
   const seg = passoEscala(Q.w * geo.mPorPx);
   const segPx = seg / geo.mPorPx;
   const bx = Q.x + 5 * MM, by = Q.y + Q.h - 9 * MM;
@@ -466,18 +523,22 @@ async function montarLayout() {
   ctx.textAlign = "left"; ctx.textBaseline = "top"; fonte(ctx, 6.5);
   const escalaNum = Math.round((geo.mPorPx * DPI / 0.0254) / 100) * 100;
   ctx.fillText(`Escala aprox. 1:${escalaNum.toLocaleString("pt-BR")}`, bx, by + 2.8 * MM);
+  }
 
   // painel lateral: situação no Brasil
   const px = 207, pw = 83;
-  caixa(ctx, px, 26, pw, 44);
-  fonte(ctx, 7.5, true); ctx.fillStyle = COR.verde; ctx.textBaseline = "top";
-  ctx.fillText("Situação no Brasil", (px + 2) * MM, 27.3 * MM);
-  try { desenharSituacao(ctx, await malhaUFs(), (px + 1.5) * MM, 31 * MM, (pw - 3) * MM, 38 * MM); } catch (e) { /* sem situação */ }
+  ctx.textBaseline = "top";
+  if (pers.situacao) {
+    caixa(ctx, px, 26, pw, 44);
+    fonte(ctx, 7.5, true); ctx.fillStyle = pers.cabecalho; ctx.textBaseline = "top";
+    ctx.fillText("Situação no Brasil", (px + 2) * MM, 27.3 * MM);
+    try { desenharSituacao(ctx, await malhaUFs(), (px + 1.5) * MM, 31 * MM, (pw - 3) * MM, 38 * MM); } catch (e) { /* sem situação */ }
+  }
 
   // legenda (o espaçamento se ajusta ao número de classes)
-  const LEG = { y: 72, h: 81 };
+  const LEG = pers.situacao ? { y: 72, h: 81 } : { y: 26, h: 127 };
   caixa(ctx, px, LEG.y, pw, LEG.h);
-  fonte(ctx, 9, true); ctx.fillStyle = COR.verde;
+  fonte(ctx, 9, true); ctx.fillStyle = pers.cabecalho;
   ctx.fillText("LEGENDA", (px + 4) * MM, (LEG.y + 3) * MM);
   const quadro = temaEstado.id ? temaEstado.quadro : null;
   const hQuadro = !quadro ? 0 : quadro.tipo === "climograma" ? 36 : 6 + quadro.linhas.length * 3.1;
@@ -502,7 +563,7 @@ async function montarLayout() {
     const qy = LEG.y + LEG.h - hQuadro - 1;
     ctx.strokeStyle = "#ccc"; ctx.lineWidth = 0.2 * MM;
     ctx.beginPath(); ctx.moveTo((px + 3) * MM, (qy - 1) * MM); ctx.lineTo((px + pw - 3) * MM, (qy - 1) * MM); ctx.stroke();
-    fonte(ctx, 6.8, true); ctx.fillStyle = COR.verde; ctx.textBaseline = "top";
+    fonte(ctx, 6.8, true); ctx.fillStyle = pers.cabecalho; ctx.textBaseline = "top";
     ctx.fillText(cortar(ctx, quadro.titulo, (pw - 6) * MM), (px + 3) * MM, qy * MM);
     if (quadro.tipo === "climograma") {
       desenharClimograma(ctx, (px + 1) * MM, (qy + 3.5) * MM, (pw - 2) * MM, 28 * MM, quadro.dados, MM / 4.3);
@@ -524,6 +585,7 @@ async function montarLayout() {
     ["Coordenadas", `${dms(lat, "lat")} / ${dms(lon, "lon")}`],
     ["Município", estado.municipio ? `${estado.municipio.nome}/${estado.municipio.uf}` : ""],
     ...(temaEstado.id ? temaEstado.info.slice(0, 2) : []),
+    ["Observações", $("observacoes").value.trim()],
     ["Responsável", $("responsavel").value], ["Data", $("data").value],
   ].filter(([, v]) => v);
   let ty = 157 * MM;
@@ -564,17 +626,16 @@ function desenharSituacao(ctx, ufs, x, y, w, h) {
     }
   }
   const [a, b] = P(estado.ponto);
-  ctx.fillStyle = "#e31a1c"; ctx.strokeStyle = "#fff"; ctx.lineWidth = 0.4 * MM;
-  ctx.beginPath(); ctx.arc(a, b, 1.6 * MM, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+  pontoCanvas(ctx, a, b, 1.6 * MM, 0.4 * MM);
 }
 
 function itensLegenda() {
   const nm = nomesAreas();
   const it = [{ tipo: "ponto", rotulo: $("rotulo").value.trim() || $("empreendimento").value.trim() || "Empreendimento" }];
-  if (estado.lote) it.push({ tipo: "area", fill: "rgba(255,140,0,0.6)", stroke: "#c2410c", rotulo: nm.ada });
+  if (estado.lote) it.push({ tipo: "area", fill: rgbaHex(pers.ada, 0.6), stroke: escurecer(pers.ada), rotulo: nm.ada });
   if (modelo() === "influencia") {
-    it.push({ tipo: "area", fill: "rgba(155,120,200,0.35)", stroke: "#5b3f8c", rotulo: nm.aid });
-    it.push({ tipo: "area", fill: "rgba(230,230,120,0.35)", stroke: "#8a8a1f", rotulo: nm.aii });
+    it.push({ tipo: "area", fill: rgbaHex(pers.aid, 0.35), stroke: escurecer(pers.aid), rotulo: nm.aid });
+    it.push({ tipo: "area", fill: rgbaHex(pers.aii, 0.35), stroke: escurecer(pers.aii), rotulo: nm.aii });
   }
   if (camadas.municipio.getSource().getFeatures().length)
     it.push({ tipo: "area", fill: "rgba(255,255,255,0)", stroke: "#111", rotulo: `Limite municipal – ${estado.municipio.nome}` });
@@ -583,11 +644,7 @@ function itensLegenda() {
 }
 
 function desenharSimbolo(ctx, it, x, y, e = 1) {
-  if (it.tipo === "ponto") {
-    ctx.fillStyle = "#e31a1c"; ctx.strokeStyle = "#fff"; ctx.lineWidth = 0.5 * MM;
-    ctx.beginPath(); ctx.arc(x + 3 * MM * e, y + 1.8 * MM * e, 1.7 * MM * e, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
-    return;
-  }
+  if (it.tipo === "ponto") { pontoCanvas(ctx, x + 3 * MM * e, y + 1.8 * MM * e, 1.7 * MM * e, 0.5 * MM); return; }
   if (it.tipo === "bola") {
     ctx.fillStyle = it.fill; ctx.strokeStyle = "#fff"; ctx.lineWidth = 0.35 * MM;
     ctx.beginPath(); ctx.arc(x + 4 * MM * e, y + 1.8 * MM * e, 1.3 * MM * e, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
@@ -683,6 +740,9 @@ async function exportarQGIS() {
     gerado_em: new Date().toISOString(),
   };
   cfg.tema = await arquivosTemaQGIS(zip);
+  cfg.observacoes = $("observacoes").value.trim();
+  cfg.estilo = { ...pers, logo: undefined };
+  if (pers.logo) { zip.file("logo.png", pers.logo.split(",")[1], { base64: true }); cfg.logo = "logo.png"; }
   zip.file("mapa.json", JSON.stringify(cfg, null, 1));
   const script = await (await fetch("gerar_mapa_qgis.py")).text();
   zip.file("gerar_mapa_qgis.py", script);
@@ -826,7 +886,7 @@ function infoADA() {
   $("btn-ada").classList.toggle("ativo", !!ada.draw);
   $("btn-ada-editar").textContent = ada.modify ? "✔ Concluir edição" : "Editar vértices";
   $("btn-ada-editar").classList.toggle("ativo", !!ada.modify);
-  for (const id of ["btn-ada-editar", "btn-ada-apagar", "btn-ada-kml"]) $(id).disabled = !tem;
+  for (const id of ["btn-ada-editar", "btn-ada-apagar", "btn-ada-kml", "btn-ada-utm"]) $(id).disabled = !tem;
   const el = $("info-ada");
   el.classList.remove("erro");
   if (ada.draw) { el.textContent = "Clique nos cantos da área; duplo clique (ou clique no primeiro vértice) fecha o polígono. Backspace desfaz o último vértice; Esc cancela."; return; }
@@ -869,6 +929,96 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") { e.preventDefault(); pararADA(); }
   else if (e.key === "Backspace" && ada.draw) { e.preventDefault(); ada.draw.removeLastPoint(); }
 });
+
+/* ── coordenadas UTM dos vértices da ADA ──────────────────────────────── */
+
+// SIRGAS 2000 (elipsoide GRS80) para UTM, no fuso indicado
+function paraUTM(lon, lat, zona) {
+  const a = 6378137, f = 1 / 298.257222101, k0 = 0.9996, e2 = f * (2 - f), ep2 = e2 / (1 - e2);
+  const lon0 = (((zona - 1) * 6 - 180 + 3) * Math.PI) / 180, fi = (lat * Math.PI) / 180, la = (lon * Math.PI) / 180;
+  const N = a / Math.sqrt(1 - e2 * Math.sin(fi) ** 2), T = Math.tan(fi) ** 2, C = ep2 * Math.cos(fi) ** 2, A = Math.cos(fi) * (la - lon0);
+  const M = a * ((1 - e2 / 4 - (3 * e2 ** 2) / 64 - (5 * e2 ** 3) / 256) * fi - ((3 * e2) / 8 + (3 * e2 ** 2) / 32 + (45 * e2 ** 3) / 1024) * Math.sin(2 * fi)
+    + ((15 * e2 ** 2) / 256 + (45 * e2 ** 3) / 1024) * Math.sin(4 * fi) - ((35 * e2 ** 3) / 3072) * Math.sin(6 * fi));
+  const E = k0 * N * (A + ((1 - T + C) * A ** 3) / 6 + ((5 - 18 * T + T ** 2 + 72 * C - 58 * ep2) * A ** 5) / 120) + 500000;
+  let Nn = k0 * (M + N * Math.tan(fi) * (A ** 2 / 2 + ((5 - T + 9 * C + 4 * C ** 2) * A ** 4) / 24 + ((61 - 58 * T + T ** 2 + 600 * C - 330 * ep2) * A ** 6) / 720));
+  if (lat < 0) Nn += 10000000;
+  return [E, Nn];
+}
+
+function baixarUTMADA() {
+  if (!estado.lote) return;
+  const c = turf.centroid(estado.lote).geometry.coordinates;
+  const zona = Math.floor((c[0] + 180) / 6) + 1, sul = c[1] < 0;
+  const epsg = (sul ? 31960 : 31954) + zona;
+  const n = (v, d) => v.toFixed(d).replace(".", ",");
+  const g = estado.lote.geometry, polis = g.type === "Polygon" ? [g.coordinates] : g.coordinates;
+  const linhas = [`ADA – ${$("empreendimento").value.trim() || "empreendimento"}`,
+    `Sistema: SIRGAS 2000 / UTM zona ${zona}${sul ? "S" : "N"} (EPSG:${epsg}); geográficas em graus decimais`,
+    `Área: ${textoArea(estado.lote)}; perímetro: ${fmtN(turf.length(turf.polygonToLine(estado.lote), { units: "meters" }), 1)} m`, "",
+    "vertice;parte;E (m);N (m);longitude;latitude;distancia ao proximo (m)"];
+  let i = 0;
+  polis.forEach((poli, parte) => {
+    const anel = poli[0].slice(0, -1);
+    anel.forEach((p, j) => {
+      i++;
+      const [E, N] = paraUTM(p[0], p[1], zona);
+      const prox = anel[(j + 1) % anel.length];
+      linhas.push([`V${i}`, parte + 1, n(E, 3), n(N, 3), n(p[0], 7), n(p[1], 7), n(turf.distance(turf.point(p), turf.point(prox), { units: "meters" }), 2)].join(";"));
+    });
+  });
+  baixar(new Blob(["﻿" + linhas.join("\r\n") + "\r\n"], { type: "text/csv;charset=utf-8" }), nomeArquivo("csv").replace(".csv", "_ADA_vertices_UTM.csv"));
+}
+
+/* ── painel de personalização ─────────────────────────────────────────── */
+
+let logoCache = null;
+function imagemLogo() {
+  if (!pers.logo) return Promise.resolve(null);
+  if (!logoCache) logoCache = new Promise((ok) => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => ok(null); im.src = pers.logo; });
+  return logoCache;
+}
+const CORES_PERS = ["cabecalho", "faixa", "ponto", "ada", "aid", "aii"], CHECKS_PERS = ["grade", "norte", "escala", "situacao", "vertices"];
+function mostrarPers() {
+  for (const k of CORES_PERS) $(`p-${k}`).value = pers[k];
+  for (const k of CHECKS_PERS) $(`p-${k}`).checked = !!pers[k];
+  $("p-simbolo").value = pers.simbolo;
+  $("p-tamPonto").value = pers.tamPonto;
+  $("p-logo-info").textContent = pers.logo ? "Logotipo carregado: aparece à direita do cabeçalho." : "Sem logotipo.";
+  $("p-logo-remover").hidden = !pers.logo;
+}
+function salvarPers() {
+  try { localStorage.setItem("geomapa_pers", JSON.stringify(pers)); }
+  catch (e) { $("p-logo-info").textContent = "Não foi possível guardar o logotipo neste navegador (imagem grande demais); ele vale só nesta visita."; }
+  Object.values(camadas).forEach((c) => c.changed());
+}
+function lerPers() {
+  for (const k of CORES_PERS) pers[k] = $(`p-${k}`).value;
+  for (const k of CHECKS_PERS) pers[k] = $(`p-${k}`).checked;
+  pers.simbolo = $("p-simbolo").value;
+  pers.tamPonto = Number($("p-tamPonto").value);
+  salvarPers();
+}
+document.querySelector(".personalizar").addEventListener("input", (e) => { if (e.target.id !== "p-logo") lerPers(); });
+document.querySelector(".personalizar").addEventListener("change", (e) => { if (e.target.id !== "p-logo") lerPers(); });
+$("p-logo").addEventListener("change", async (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const url = await new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(r.result); r.readAsDataURL(f); });
+  const im = await new Promise((ok, erro) => { const i = new Image(); i.onload = () => ok(i); i.onerror = erro; i.src = url; }).catch(() => null);
+  if (!im) { $("p-logo-info").textContent = "Não consegui ler essa imagem."; return; }
+  const k = Math.min(1, 600 / Math.max(im.width, im.height));  // reduz para caber no navegador
+  const cv = document.createElement("canvas");
+  cv.width = Math.round(im.width * k); cv.height = Math.round(im.height * k);
+  cv.getContext("2d").drawImage(im, 0, 0, cv.width, cv.height);
+  pers.logo = cv.toDataURL("image/png");
+  logoCache = null;
+  e.target.value = "";
+  salvarPers(); mostrarPers();
+});
+$("p-logo-remover").addEventListener("click", () => { pers.logo = ""; logoCache = null; salvarPers(); mostrarPers(); });
+$("p-padrao").addEventListener("click", () => { Object.assign(pers, PERS_PADRAO, { logo: pers.logo }); salvarPers(); mostrarPers(); });
+$("btn-ada-utm").addEventListener("click", baixarUTMADA);
+mostrarPers();
 
 /* ── eventos ──────────────────────────────────────────────────────────── */
 

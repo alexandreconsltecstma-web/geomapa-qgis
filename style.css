@@ -136,3 +136,14 @@ dialog code { background: var(--fundo); padding: 1px 4px; border-radius: 4px; }
 .mapa.desenhando { cursor: crosshair; }
 .ol-control.trava-mapa { top: 8px; right: 8px; }
 .ol-control.trava-mapa button { width: auto; padding: 0 8px; font-size: .8rem; }
+
+/* personalização */
+.ada .botoes .largo { grid-column: 1 / -1; }
+textarea { font: inherit; padding: 6px 8px; border: 1px solid var(--borda); border-radius: 6px; background: var(--painel); color: var(--texto); resize: vertical; }
+.personalizar { border: 1px solid var(--borda); border-radius: 8px; padding: 6px 10px; }
+.personalizar summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.personalizar[open] { display: flex; flex-direction: column; gap: 8px; padding-bottom: 10px; }
+.personalizar input[type=color] { width: 100%; height: 32px; padding: 2px; border: 1px solid var(--borda); border-radius: 6px; background: var(--painel); cursor: pointer; }
+.tres { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.elementos { border: 0; padding: 0; margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.elementos legend { font-size: .85rem; margin-bottom: 4px; }

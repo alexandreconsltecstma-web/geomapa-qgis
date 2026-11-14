@@ -23,7 +23,7 @@ from qgis.core import (
     QgsCategorizedSymbolRenderer, QgsRendererCategory, QgsLineSymbol, QgsSymbol, QgsNullSymbolRenderer,
 )
 from qgis.PyQt.QtCore import Qt
-from qgis.PyQt.QtGui import QColor, QFont
+from qgis.PyQt.QtGui import QColor, QFont, QImage
 
 BASES = {
     "osm": ("OpenStreetMap", "https://tile.openstreetmap.org/{z}/{x}/{y}.png", "© colaboradores do OpenStreetMap"),
@@ -124,7 +124,7 @@ def camadas_tema(pasta, t, geo, proj):
                 lyr.setLabelsEnabled(True)
                 no_mapa.append(lyr)
             continue
-        sufixo = " – cursos d'água" if linha else " – pontos" if ponto else " – áreas" if any("linhas" in a for a in t.get("vetor") or []) else ""
+        sufixo = (" – cursos d'água" if t["id"] == "hidrografia" else " – linhas") if linha else " – pontos" if ponto else " – áreas" if any("linhas" in a for a in t.get("vetor") or []) else ""
         lyr = camada(pasta, arq, t["nome"] + sufixo, geo)
         if not lyr:
             continue
@@ -134,9 +134,9 @@ def camadas_tema(pasta, t, geo, proj):
         for i in itens:
             i["cor"] = rotulos.get(i["rotulo"], i["cor"])
             if linha:
-                i["larg"] = 0.7 if i["rotulo"] == "Rio" else 0.4
+                i["larg"] = 1.1 if i["rotulo"].startswith("Rota") else 0.7 if i["rotulo"] == "Rio" else 0.4
         if ponto:
-            cats = [QgsRendererCategory(i["rotulo"], QgsMarkerSymbol.createSimple({"name": "circle" if ("Nascente" in i["rotulo"] or i["rotulo"].startswith("ETA")) else "triangle",
+            cats = [QgsRendererCategory(i["rotulo"], QgsMarkerSymbol.createSimple({"name": "circle" if ("Nascente" in i["rotulo"] or i["rotulo"].startswith("ETA") or i.get("tipo") == "bola") else "triangle",
                                                                                    "color": i["cor"], "outline_color": "white",
                                                                                    "size": "3.2"}), i["rotulo"]) for i in itens]
             lyr.setRenderer(QgsCategorizedSymbolRenderer("rotulo", cats))
@@ -218,6 +218,16 @@ def esc(t):
 def main():
     pasta = pasta_do_pacote()
     cfg = json.load(open(os.path.join(pasta, "mapa.json"), encoding="utf-8"))
+    est = cfg.get("estilo") or {}
+    cab, faixa = est.get("cabecalho", VERDE), est.get("faixa", OURO)
+
+    def rgba(h, a):
+        h = h.lstrip("#")
+        return f"{int(h[0:2], 16)},{int(h[2:4], 16)},{int(h[4:6], 16)},{a}"
+
+    def escuro(h, f=0.55):
+        h = h.lstrip("#")
+        return "#" + "".join(f"{int(int(h[i:i + 2], 16) * f):02x}" for i in (0, 2, 4))
     proj = QgsProject.instance()
     proj.clear()
     geo = QgsCoordinateReferenceSystem("EPSG:4674")
@@ -232,16 +242,18 @@ def main():
     ponto = camada(pasta, "camadas/ponto.geojson", cfg.get("nome_ponto") or "Empreendimento", geo)
     if ponto:
         ponto.setRenderer(QgsSingleSymbolRenderer(QgsMarkerSymbol.createSimple(
-            {"name": "circle", "color": "#e31a1c", "outline_color": "white", "outline_width": "0.5", "size": "3.6"})))
+            {"name": {"quadrado": "square", "estrela": "star", "triangulo": "triangle"}.get(est.get("simbolo"), "circle"),
+             "color": est.get("ponto", "#e31a1c"), "outline_color": "white", "outline_width": "0.5",
+             "size": str(round(3.6 * est.get("tamPonto", 7) / 7, 2))})))
         if cfg.get("rotulo_ponto"):
             rotulo(ponto, "'" + cfg["rotulo_ponto"].replace("'", " ") + "'")
         cam.append(ponto)
         leg.append(ponto)
     nomes = cfg.get("nomes") or {}
-    for arq, nome, cor, borda in (("camadas/lote.geojson", nomes.get("ada", "ADA – área do empreendimento"), "255,140,0,150", "#c2410c"),
-                                  ("camadas/aid.geojson", nomes.get("aid", f"AID – raio de {cfg['raios'][0]:g} m"), "155,120,200,70", "#5b3f8c"),
+    for arq, nome, cor, borda in (("camadas/lote.geojson", nomes.get("ada", "ADA – área do empreendimento"), rgba(est.get("ada", "#ff8c00"), 150), escuro(est.get("ada", "#ff8c00"))),
+                                  ("camadas/aid.geojson", nomes.get("aid", f"AID – raio de {cfg['raios'][0]:g} m"), rgba(est.get("aid", "#9b78c8"), 75), escuro(est.get("aid", "#9b78c8"))),
                                   ("camadas/aii.geojson", nomes.get("aii", f"AII – faixa de {cfg['raios'][0]:g} a {cfg['raios'][1]:g} m"),
-                                   "230,230,120,60", "#8a8a1f")):
+                                   rgba(est.get("aii", "#e6e678"), 70), escuro(est.get("aii", "#e6e678")))):
         if cfg["modelo"] != "influencia" and "ai" in arq:
             continue
         lyr = camada(pasta, arq, nome, geo)
@@ -276,10 +288,23 @@ def main():
     lay.setName(cfg.get("titulo", "Mapa")[:60])
     lay.pageCollection().page(0).setPageSize("A4", QgsLayoutItemPage.Landscape)
     caixa(lay, 4, 4, 289, 202, "white", "#333333", 0.5)
-    caixa(lay, 4, 4, 289, 17, VERDE, VERDE, 0.1)
-    caixa(lay, 4, 21, 289, 1.0, OURO, OURO, 0.1)
-    texto(lay, 9, 5.2, 279, 9, (cfg.get("titulo") or "Mapa").upper(), 15, "white", True, valign=Qt.AlignVCenter)
-    texto(lay, 9, 13.2, 279, 7, cfg.get("subtitulo", ""), 8.5, "#e8e2c8", valign=Qt.AlignVCenter)
+    caixa(lay, 4, 4, 289, 17, cab, cab, 0.1)
+    caixa(lay, 4, 21, 289, 1.0, faixa, faixa, 0.1)
+    larg_tit = 279
+    logo = os.path.join(pasta, cfg["logo"]) if cfg.get("logo") else None
+    if logo and os.path.exists(logo):  # logotipo à direita do cabeçalho
+        img = QImage(logo)
+        w_l = min(50.0, 13.0 * img.width() / max(img.height(), 1))
+        caixa(lay, 289 - w_l - 3, 6, w_l + 2, 15, "white", "white", 0.1)
+        pic = QgsLayoutItemPicture(lay)
+        pic.setPicturePath(logo)
+        pic.setResizeMode(QgsLayoutItemPicture.Zoom)
+        lay.addLayoutItem(pic)
+        pic.attemptMove(mm(289 - w_l - 2, 7))
+        pic.attemptResize(tam(w_l, 13))
+        larg_tit = 279 - w_l - 6
+    texto(lay, 9, 5.2, larg_tit, 9, (cfg.get("titulo") or "Mapa").upper(), 15, "white", True, valign=Qt.AlignVCenter)
+    texto(lay, 9, 13.2, larg_tit, 7, cfg.get("subtitulo", ""), 8.5, "#f1ecd8", valign=Qt.AlignVCenter)
 
     mx, my, mw, mh = 13, 29, 188, 168
     mapa = QgsLayoutItemMap(lay)
@@ -310,34 +335,37 @@ def main():
         g.setAnnotationDirection(QgsLayoutItemMapGrid.VerticalDescending, lado)
     g.setFrameStyle(QgsLayoutItemMapGrid.InteriorTicks)
     g.setFrameWidth(1.5)
-    mapa.grids().addGrid(g)
+    if est.get("grade", True):
+        mapa.grids().addGrid(g)
 
-    caixa(lay, mx + mw - 15, my + 3, 12, 15, "255,255,255,215", "#999999", 0.15)
-    norte = QgsLayoutItemPicture(lay)
-    norte.setPicturePath(QgsSymbolLayerUtils.svgSymbolNameToPath("arrows/NorthArrow_02.svg", QgsPathResolver()))
-    lay.addLayoutItem(norte)
-    norte.attemptMove(mm(mx + mw - 13.5, my + 4))
-    norte.attemptResize(tam(9, 13))
+    if est.get("norte", True):
+        caixa(lay, mx + mw - 15, my + 3, 12, 15, "255,255,255,215", "#999999", 0.15)
+        norte = QgsLayoutItemPicture(lay)
+        norte.setPicturePath(QgsSymbolLayerUtils.svgSymbolNameToPath("arrows/NorthArrow_02.svg", QgsPathResolver()))
+        lay.addLayoutItem(norte)
+        norte.attemptMove(mm(mx + mw - 13.5, my + 4))
+        norte.attemptResize(tam(9, 13))
 
-    largura_m = ext.width() * (mw / max(mw, mh * ext.width() / max(ext.height(), 1)))
-    caixa(lay, mx + 3, my + mh - 16, 86, 13, "255,255,255,215", "#999999", 0.15)
-    sb = QgsLayoutItemScaleBar(lay)
-    sb.setStyle("Single Box")
-    sb.setLinkedMap(mapa)
-    sb.setUnits(QgsUnitTypes.DistanceKilometers)
-    sb.setUnitLabel("km")
-    sb.setNumberOfSegments(4)
-    sb.setNumberOfSegmentsLeft(0)
-    sb.setUnitsPerSegment(escala_redonda(largura_m))
-    sb.setHeight(1.8)
-    sb.setTextFormat(fmt(7))
-    lay.addLayoutItem(sb)
-    sb.attemptMove(mm(mx + 5, my + mh - 15.5))
-    texto(lay, mx + 5, my + mh - 6.6, 60, 3, "Escala aprox. 1:" + f"{int(round(mapa.scale(), -2)):,}".replace(",", "."), 6.5)
+    if est.get("escala", True):
+        largura_m = ext.width() * (mw / max(mw, mh * ext.width() / max(ext.height(), 1)))
+        caixa(lay, mx + 3, my + mh - 16, 86, 13, "255,255,255,215", "#999999", 0.15)
+        sb = QgsLayoutItemScaleBar(lay)
+        sb.setStyle("Single Box")
+        sb.setLinkedMap(mapa)
+        sb.setUnits(QgsUnitTypes.DistanceKilometers)
+        sb.setUnitLabel("km")
+        sb.setNumberOfSegments(4)
+        sb.setNumberOfSegmentsLeft(0)
+        sb.setUnitsPerSegment(escala_redonda(largura_m))
+        sb.setHeight(1.8)
+        sb.setTextFormat(fmt(7))
+        lay.addLayoutItem(sb)
+        sb.attemptMove(mm(mx + 5, my + mh - 15.5))
+        texto(lay, mx + 5, my + mh - 6.6, 60, 3, "Escala aprox. 1:" + f"{int(round(mapa.scale(), -2)):,}".replace(",", "."), 6.5)
 
     px, pw = 207, 83
     caixa(lay, px, 26, pw, 44)
-    texto(lay, px + 2, 26.8, pw - 4, 4, "Situação no Brasil", 7.5, VERDE, True)
+    texto(lay, px + 2, 26.8, pw - 4, 4, "Situação no Brasil", 7.5, cab, True)
     if ufs:
         ins = QgsLayoutItemMap(lay)
         ins.setCrs(geo)
@@ -356,7 +384,7 @@ def main():
     h_quadro = 0
     if tema and tema.get("climograma") and os.path.exists(os.path.join(pasta, tema["climograma"])):
         h_quadro = 36
-        texto(lay, px + 2, 72 + 81 - h_quadro, pw - 4, 4, "Climograma no ponto (°C e mm)", 6.8, VERDE, True)
+        texto(lay, px + 2, 72 + 81 - h_quadro, pw - 4, 4, "Climograma no ponto (°C e mm)", 6.8, cab, True)
         fig = QgsLayoutItemPicture(lay)
         fig.setPicturePath(os.path.join(pasta, tema["climograma"]))
         lay.addLayoutItem(fig)
@@ -365,7 +393,7 @@ def main():
     elif tema and tema.get("tabela"):
         tb = tema["tabela"]
         h_quadro = 7 + 3.1 * len(tb["linhas"])
-        html = f"<b style='color:{VERDE}'>{esc(tb['titulo'])}</b><br>" + "".join(
+        html = f"<b style='color:{cab}'>{esc(tb['titulo'])}</b><br>" + "".join(
             f"<b>{esc(a)}</b>: {esc(b)}<br>" for a, b in tb["linhas"])
         texto(lay, px + 2, 72 + 81 - h_quadro, pw - 4, h_quadro, html, 6.4, html=True)
     lg = QgsLayoutItemLegend(lay)
@@ -378,7 +406,7 @@ def main():
     lg.model().setRootGroup(raiz)
     main.raiz = raiz  # mantém a árvore viva enquanto o layout existir
     lg.setFrameEnabled(False)
-    lg.rstyle(QgsLegendStyle.Title).setTextFormat(fmt(9, VERDE, True))
+    lg.rstyle(QgsLegendStyle.Title).setTextFormat(fmt(9, cab, True))
     n_classes = (len(tema.get("legenda", [])) if tema else 0) + (8 if h_quadro else 0)
     tam_leg = 7 if n_classes <= 10 else 6 if n_classes <= 16 else 5.2
     lg.rstyle(QgsLegendStyle.SymbolLabel).setTextFormat(fmt(tam_leg))
@@ -398,7 +426,7 @@ def main():
     info = "".join(f"<b>{esc(r)}:</b> {esc(v)}<br>" for r, v in (
         ("Empreendimento", cfg.get("empreendimento")), ("Endereço", cfg.get("endereco")),
         ("Coordenadas", f"{lat:.6f}, {lon:.6f}"), *((tema or {}).get("info") or [])[:2],
-        ("Responsável", cfg.get("responsavel")), ("Data", cfg.get("data"))) if v)
+        ("Observações", cfg.get("observacoes")), ("Responsável", cfg.get("responsavel")), ("Data", cfg.get("data"))) if v)
     texto(lay, px + 2, 156.2, pw - 4, 27, info, 6.4, html=True)
     texto(lay, px + 2, 183.5, pw - 4, 18,
           f"<b>Sistema de referência:</b> SIRGAS 2000 / UTM {zona}{'S' if lat < 0 else 'N'} ({utm.authid()})<br>" +

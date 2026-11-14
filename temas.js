@@ -614,6 +614,221 @@ const TEMAS = {
     },
   },
 
+  prioritarias: {
+    nome: "Áreas prioritárias para conservação", titulo: "Áreas prioritárias para a conservação da biodiversidade na região do empreendimento",
+    base: "claro", escala: 30000, raio: true, dinamico: true, vetorial: true, opacidade: 0.75,
+    fonte: "MMA – Áreas Prioritárias para a Conservação da Biodiversidade, 2ª atualização (Portaria MMA nº 463/2018), via INDE/ICMBio",
+    camadas() {
+      return [new ol.layer.Vector({ className: "tema", source: new ol.source.Vector(), declutter: true,
+        style: estiloClasses(PRIOR_CLASSES, (f) => (mapa.getView().getResolution() / K < 150 ? f.get("nome") : "")) })];
+    },
+    async atualizar(camadas) {
+      const bb = vistaBBox(0.25);
+      if (bb[2] - bb[0] > 8) { temaEstado.aviso = "Aproxime o mapa (menos de 8° de largura) para carregar as áreas prioritárias."; return; }
+      if (camadas[0].get("bbox") && contem(camadas[0].get("bbox"), bb)) return;
+      const res = await Promise.all(Object.keys(PRIOR_BIOMAS).map((c) => wfsINDE(`ICMBio:${c}`, bb).then((fs) => ({ c, fs })).catch(() => null)));
+      if (res.every((r) => !r)) throw new Error("o INDE/ICMBio não respondeu");
+      const feats = [];
+      for (const r of res.filter(Boolean)) for (const f of r.fs) {
+        const p = f.properties, prio = campoQue(p, /^prio/i), imp = campoQue(p, /^imp/i);
+        const classe = /extrem/i.test(prio) ? "pr_ea" : /muito/i.test(prio) ? "pr_ma" : "pr_a";
+        feats.push(turf.feature(f.geometry, { classe, nome: (p.nome_area || p.nome_ap || "").trim(), codigo: p.cod_area || p.id_ap || "",
+          bioma: PRIOR_BIOMAS[r.c], importancia: imp, prioridade: prio, acao: (p.acao_princ || p.nomeacao || p.acaoprinc || "").trim() }));
+      }
+      const src = camadas[0].getSource();
+      src.clear();
+      src.addFeatures(feats.map((f) => fmtGeo.readFeature(f)));
+      camadas[0].set("bbox", bb);
+      temaEstado.vetor = vetorQGIS(PRIOR_CLASSES, feats);
+      temaEstado.aviso = feats.length ? "" : "Nenhuma área prioritária para conservação neste enquadramento.";
+    },
+    async legenda(camadas) { return legendaClasses(PRIOR_CLASSES, camadas[0]); },
+    async info(p, camadas) {
+      const ref = estado.lote || turf.point(p), daRef = estado.lote ? "da ADA" : "do ponto";
+      let b = null;
+      for (const f of camadas[0].getSource().getFeatures()) {
+        const g = fmtGeo.writeFeatureObject(f), d = distanciaM(ref, g);
+        if (!b || d < b.d) b = { d, p: g.properties };
+      }
+      if (!b) return [["Áreas prioritárias", "nenhuma no enquadramento atual"]];
+      const nome = `${b.p.nome || "sem nome"}${b.p.codigo ? ` (${b.p.codigo})` : ""} – ${b.p.bioma}`;
+      const l = b.d < 1 ? [["Área prioritária no local", nome]] : [["Área prioritária mais próxima", `${nome}, a ${textoDist(b.d)} ${daRef}`]];
+      if (b.p.importancia) l.push(["Importância biológica", b.p.importancia]);
+      if (b.p.prioridade) l.push(["Prioridade de ação", b.p.prioridade]);
+      if (b.p.acao) l.push(["Ação indicada pelo MMA", b.p.acao]);
+      return l;
+    },
+  },
+
+  car: {
+    nome: "Imóveis rurais (CAR)", titulo: "Imóveis do Cadastro Ambiental Rural no entorno do empreendimento",
+    base: "satelite", escala: 2500, raio: true, dinamico: true, vetorial: true, opacidade: 1,
+    fonte: "SFB/MGI – Sistema Nacional de Cadastro Ambiental Rural (SICAR), base pública de imóveis",
+    camadas() {
+      return [new ol.layer.Vector({ className: "tema", source: new ol.source.Vector(), style: estiloClasses(CAR_CLASSES) })];
+    },
+    async atualizar(camadas) {
+      const bb = vistaBBox(0.1);
+      if (bb[2] - bb[0] > 0.3) { temaEstado.aviso = "Aproxime o mapa (até uns 30 km de largura) para carregar os imóveis do CAR."; return; }
+      const uf = (estado.municipio?.uf || "").toLowerCase();
+      if (!uf) { temaEstado.aviso = "Marque o ponto para saber o estado e carregar o CAR."; return; }
+      const chave = `${uf}|${estado.ponto}|${estado.lote ? turf.area(estado.lote) : 0}`;
+      if (camadas[0].get("bbox") && contem(camadas[0].get("bbox"), bb) && camadas[0].get("chave") === chave) return;
+      const u = "https://geoserver.car.gov.br/geoserver/sicar/wfs?" + new URLSearchParams({ service: "WFS", version: "2.0.0", request: "GetFeature",
+        typeNames: `sicar:sicar_imoveis_${uf}`, outputFormat: "application/json", srsName: "EPSG:4326", count: "3000",
+        bbox: `${bb[1]},${bb[0]},${bb[3]},${bb[2]},urn:ogc:def:crs:EPSG::4326` });
+      const r = await jsonTempo(u, 45000);
+      const ref = estado.lote || (estado.ponto && turf.point(estado.ponto));
+      const feats = (r.features || []).filter((f) => f.geometry).map((f) => {
+        const p = f.properties;
+        let toca = false;
+        try { toca = !!ref && turf.booleanIntersects(ref, f); } catch (e) { /* geometria inválida */ }
+        const classe = toca ? "car_local" : p.tipo_imovel === "AST" ? "car_ast" : p.tipo_imovel === "PCT" ? "car_pct" : "car_iru";
+        return turf.feature(f.geometry, { classe, codigo: p.cod_imovel || "", area_ha: Number(p.area) || 0, modulos: Number(p.m_fiscal) || 0,
+          situacao: CAR_STATUS[p.status_imovel] || p.status_imovel || "", condicao: p.condicao || "", tipo: p.tipo_imovel || "", municipio: p.municipio || "" });
+      }).sort((a, b) => (a.properties.classe === "car_local") - (b.properties.classe === "car_local"));
+      const src = camadas[0].getSource();
+      src.clear();
+      src.addFeatures(feats.map((f) => fmtGeo.readFeature(f)));
+      camadas[0].set("bbox", bb); camadas[0].set("chave", chave);
+      temaEstado.vetor = vetorQGIS(CAR_CLASSES, feats);
+      temaEstado.aviso = feats.length >= 3000 ? "Muitos imóveis neste enquadramento: aproxime o mapa para ver todos." : "";
+    },
+    async legenda(camadas) { return legendaClasses(CAR_CLASSES, camadas[0]); },
+    async info(p, camadas) {
+      const fs = camadas[0].getSource().getFeatures().map((f) => f.getProperties());
+      const loc = fs.filter((f) => f.classe === "car_local");
+      const l = [["Imóveis do CAR no enquadramento", fmtN(fs.length)]];
+      if (!loc.length) l.push([estado.lote ? "Imóvel que contém a ADA" : "Imóvel que contém o ponto", "nenhum cadastrado no CAR (em área urbana isso é o esperado)"]);
+      for (const f of loc.slice(0, 3)) {
+        l.push([`Imóvel no local (${f.tipo || "CAR"})`, `${f.codigo} – ${fmtN(f.area_ha, 2)} ha (${fmtN(f.modulos, 2)} módulo fiscal), situação ${f.situacao}`]);
+        if (f.condicao) l.push(["Condição do cadastro", f.condicao]);
+      }
+      if (loc.length > 3) l.push(["Outros imóveis no local", `mais ${loc.length - 3}`]);
+      return l;
+    },
+  },
+
+  acesso: {
+    nome: "Acesso ao empreendimento", titulo: "Mapa de acesso ao empreendimento", base: "osm", escala: 4000, raio: true, vetorial: true, opacidade: 1,
+    fonte: "Rota: OSRM sobre o OpenStreetMap; localização da sede/capital: Nominatim (OpenStreetMap)",
+    opcoes: '<label>Partindo de<select id="opAcesso"><option value="sede">sede do município</option><option value="capital">capital do estado</option></select></label>',
+    camadas() {
+      return [new ol.layer.Vector({ className: "tema", source: new ol.source.Vector(), declutter: true,
+        style: estiloClasses(ACESSO_CLASSES, (f) => (f.get("classe") === "origem" ? f.get("nome") : "")) })];
+    },
+    async atualizar(camadas) {
+      if (!estado.ponto || !estado.municipio) { temaEstado.aviso = "Marque o ponto para traçar o acesso."; return; }
+      const op = $("opAcesso")?.value || "sede", uf = estado.municipio.uf;
+      const chave = `${op}|${estado.ponto}`;
+      if (camadas[0].get("chave") === chave) return;
+      const lugar = op === "capital" ? CAPITAIS[uf] : estado.municipio.nome;
+      const geo = await json(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=br&accept-language=pt-BR&q=${encodeURIComponent(`${lugar}, ${uf}, Brasil`)}`);
+      if (!geo.length) throw new Error(`não achei ${lugar}/${uf} no OpenStreetMap`);
+      const o = [Number(geo[0].lon), Number(geo[0].lat)];
+      const r = await jsonTempo(`https://router.project-osrm.org/route/v1/driving/${o[0]},${o[1]};${estado.ponto[0]},${estado.ponto[1]}?overview=full&geometries=geojson&steps=true`, 30000);
+      if (r.code !== "Ok" || !r.routes?.length) throw new Error("o roteador (OSRM) não achou caminho");
+      const rota = r.routes[0];
+      const vias = {};
+      for (const s of rota.legs[0].steps) {
+        const n = s.ref ? s.ref.replace(/;/g, "/") + (s.name ? ` (${s.name})` : "") : s.name;
+        if (n) vias[n] = (vias[n] || 0) + s.distance;
+      }
+      const principais = Object.entries(vias).filter(([, d]) => d > 200).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([n]) => n);
+      const nomeOrigem = `${lugar}/${uf}`;
+      const rotRota = `Rota de acesso a partir de ${nomeOrigem}`, rotOrigem = `${nomeOrigem} – ponto de partida`;
+      const feats = [turf.feature(rota.geometry, { classe: "rota", nome: "", rotulo: rotRota, cor: ACESSO_CLASSES[0].stroke }),
+                     turf.point(o, { classe: "origem", nome: lugar, rotulo: rotOrigem, cor: ACESSO_CLASSES[1].fill })];
+      const src = camadas[0].getSource();
+      src.clear();
+      src.addFeatures(feats.map((f) => fmtGeo.readFeature(f)));
+      camadas[0].set("chave", chave);
+      camadas[0].set("dados", { nomeOrigem, op, km: rota.distance / 1000, min: rota.duration / 60, principais, reta: turf.distance(turf.point(o), turf.point(estado.ponto)),
+                                 legenda: [{ tipo: "linha", stroke: ACESSO_CLASSES[0].stroke, rotulo: rotRota }, { tipo: "bola", fill: ACESSO_CLASSES[1].fill, stroke: "#fff", rotulo: rotOrigem }] });
+      temaEstado.vetor = turf.featureCollection(feats);
+      temaEstado.aviso = "";
+      const ext = ol.extent.buffer(src.getExtent(), 0);
+      ol.extent.extend(ext, ol.extent.boundingExtent([ol.proj.fromLonLat(estado.ponto)]));
+      mapa.getView().fit(ext, { padding: [60, 60, 60, 60], maxZoom: 17 });
+    },
+    async legenda(camadas) { return camadas[0].get("dados")?.legenda || []; },
+    async info(p, camadas) {
+      const d = camadas[0].get("dados");
+      if (!d) return [];
+      const l = [["Ponto de partida", `${d.nomeOrigem} (${d.op === "capital" ? "capital do estado" : "sede do município"})`],
+                 ["Percurso de carro", `${fmtN(d.km, 1)} km, cerca de ${d.min < 90 ? fmtN(Math.round(d.min)) + " min" : fmtN(d.min / 60, 1) + " h"}`],
+                 ["Distância em linha reta", `${fmtN(d.reta, 1)} km`]];
+      if (d.principais.length) l.push(["Principais vias", d.principais.join("; ")]);
+      return l;
+    },
+  },
+
+  entorno: {
+    nome: "Entorno e receptores sensíveis", titulo: "Equipamentos sociais e receptores sensíveis no entorno do empreendimento",
+    base: "osm", raio: true, vetorial: true, opacidade: 1,
+    get escala() { return Number(document.getElementById("opRaioEntorno")?.value || 500) * 1.15; },
+    fonte: "OpenStreetMap (escolas, creches, unidades de saúde, templos e assistência social), via Overpass",
+    opcoes: '<label>Raio de análise<select id="opRaioEntorno"><option value="250">250 m</option><option value="500" selected>500 m</option><option value="1000">1 km</option><option value="2000">2 km</option></select></label>',
+    camadas() {
+      return [new ol.layer.Vector({ className: "tema", source: new ol.source.Vector(), declutter: true,
+        style: estiloClasses(ENTORNO_CLASSES, (f) => (f.get("classe") !== "raio" && mapa.getView().getResolution() / K < 3 ? f.get("nome") : "")) })];
+    },
+    async atualizar(camadas) {
+      if (!estado.ponto) { temaEstado.aviso = "Marque o ponto para buscar o entorno."; return; }
+      const R = Number($("opRaioEntorno")?.value || 500), [lon, lat] = estado.ponto;
+      const chave = `${R}|${estado.ponto}|${estado.lote ? turf.area(estado.lote) : 0}`;
+      if (camadas[0].get("chave") === chave) return;
+      const q = `[out:json][timeout:40];(nwr["amenity"~"^(school|kindergarten|college|university|hospital|clinic|doctors|dentist|place_of_worship|social_facility|nursing_home|community_centre)$"](around:${R + 100},${lat},${lon});` +
+                `nwr["healthcare"~"^(hospital|clinic|centre|doctor)$"](around:${R + 100},${lat},${lon}););out center tags;`;
+      const r = await overpass(q);
+      const centro = turf.point(estado.ponto), ref = estado.lote || centro;
+      const vistos = new Set(), feats = [];
+      for (const el of r.elements) {
+        const c = el.type === "node" ? [el.lon, el.lat] : el.center ? [el.center.lon, el.center.lat] : null;
+        if (!c) continue;
+        const tg = el.tags || {}, a = tg.amenity || "";
+        const classe = /school|kindergarten|college|university/.test(a) ? "educacao" : a === "place_of_worship" ? "culto"
+          : /social_facility|nursing_home|community_centre/.test(a) ? "assistencia" : "saude";
+        const pt = turf.point(c);
+        if (turf.distance(centro, pt, { units: "meters" }) > R) continue;
+        const k = `${classe}|${tg.name || ""}|${c[0].toFixed(4)},${c[1].toFixed(4)}`;
+        if (vistos.has(k)) continue;
+        vistos.add(k);
+        feats.push(turf.point(c, { classe, nome: tg.name || "", tipo: TIPO_OSM[a] || TIPO_OSM[tg.healthcare] || "", dist_m: Math.round(distanciaM(ref, pt)), osm: `${el.type}/${el.id}` }));
+      }
+      const anel = turf.polygonToLine(turf.circle(centro, R / 1000, { steps: 128, units: "kilometers" }));
+      const raio = turf.feature(anel.geometry, { classe: "raio", nome: "" });
+      const todos = [raio, ...feats];
+      const src = camadas[0].getSource();
+      src.clear();
+      src.addFeatures(todos.map((f) => fmtGeo.readFeature(f)));
+      camadas[0].set("chave", chave);
+      camadas[0].set("raio", R);
+      const cl = ENTORNO_CLASSES.map((c) => (c.classe === "raio" ? { ...c, rotulo: `Raio de análise – ${textoDist(R)}` } : c));
+      camadas[0].set("classes", cl);
+      temaEstado.vetor = vetorQGIS(cl, todos);
+      temaEstado.aviso = "";
+      mapa.getView().fit(fmtGeo.readFeature(raio).getGeometry().getExtent(), { padding: [40, 40, 40, 40], maxZoom: 18 });
+    },
+    async legenda(camadas) { return legendaClasses(camadas[0].get("classes") || ENTORNO_CLASSES, camadas[0]); },
+    async info(p, camadas) {
+      const R = camadas[0].get("raio");
+      if (!R) return [];
+      const fs = camadas[0].getSource().getFeatures().map((f) => f.getProperties()).filter((f) => f.classe !== "raio");
+      const daRef = estado.lote ? "da ADA" : "do ponto";
+      const l = [];
+      for (const c of ENTORNO_CLASSES.filter((x) => x.classe !== "raio")) {
+        const g = fs.filter((f) => f.classe === c.classe).sort((a, b) => a.dist_m - b.dist_m);
+        if (!g.length) { l.push([c.curto, `nenhum mapeado em ${textoDist(R)}`]); continue; }
+        l.push([c.curto, `${g.length} em ${textoDist(R)}; o mais perto: ${g[0].nome || g[0].tipo || "sem nome"}, a ${textoDist(g[0].dist_m)} ${daRef}`]);
+      }
+      const perto = fs.filter((f) => f.dist_m <= 100 && f.classe !== "culto").length + fs.filter((f) => f.dist_m <= 100 && f.classe === "culto").length;
+      if (perto) l.push(["Atenção", `${perto} receptor(es) sensível(is) a até 100 m: considerar ruído, poeira, odor e tráfego no estudo`]);
+      l.push(["Observação", "levantamento do OpenStreetMap: confirmar em campo, pois pode haver equipamentos não mapeados"]);
+      return l;
+    },
+  },
+
   relevo: {
     nome: "Hipsometria (relevo)", titulo: "Hipsometria do entorno do empreendimento", base: "claro", escala: 6000, dinamico: true,
     fonte: "Mapzen Terrain Tiles (SRTM/NASA, ~30 m) e Esri World Hillshade; altitude no ponto: Copernicus DEM (Open-Meteo)",
@@ -929,16 +1144,23 @@ async function dadosSaneamento() {
   return cacheTema.saneamento;
 }
 
-async function overpass(q) {
-  for (const srv of ["https://overpass-api.de/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
-                     "https://overpass.private.coffee/api/interpreter"]) {
-    const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 30000);
-    try {
-      const resp = await fetch(`${srv}?data=${encodeURIComponent(q)}`, { signal: ctl.signal });
-      if (resp.ok) return await resp.json();
-    } catch (e) { /* tenta o próximo espelho */ } finally { clearTimeout(tm); }
-  }
-  throw new Error("os servidores do OpenStreetMap (Overpass) não responderam");
+// consulta todos os espelhos do Overpass ao mesmo tempo e fica com a primeira resposta válida
+const OVERPASS = ["https://overpass-api.de/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+                  "https://overpass.private.coffee/api/interpreter", "https://overpass.kumi.systems/api/interpreter"];
+async function overpass(q, ms = 60000) {
+  const ctls = OVERPASS.map(() => new AbortController());
+  const tm = setTimeout(() => ctls.forEach((c) => c.abort()), ms);
+  try {
+    return await Promise.any(OVERPASS.map(async (srv, i) => {
+      const resp = await fetch(srv, { method: "POST", body: new URLSearchParams({ data: q }), signal: ctls[i].signal });
+      if (!resp.ok) throw new Error(`${resp.status}`);
+      const r = await resp.json();
+      if (!r || !Array.isArray(r.elements)) throw new Error("resposta inválida");
+      return r;
+    }));
+  } catch (e) {
+    throw new Error("os servidores do OpenStreetMap (Overpass) não responderam");
+  } finally { clearTimeout(tm); ctls.forEach((c) => c.abort()); }
 }
 
 const cacheSanOSM = {};
@@ -955,6 +1177,80 @@ async function saneamentoOSM([lon, lat]) {
     }).filter(Boolean);
   })().catch((e) => { delete cacheSanOSM[k]; throw e; });
   return cacheSanOSM[k];
+}
+
+/* ── estudos ambientais: áreas prioritárias (MMA), CAR, acesso e receptores sensíveis ── */
+
+const PRIOR_BIOMAS = { caatinga_2a_atualizacao: "Caatinga", mataatlantica_2a_atualiz: "Mata Atlântica", zcm_2a_atualiz: "Zona Costeira e Marinha",
+  cerrado_pantanal_2a_atualizacao: "Cerrado e Pantanal", amazonia_2a_atualizacao: "Amazônia", pampa_2a_atualizacao: "Pampa",
+  areas_hibridas_2a_atualizacao: "Zonas híbridas" };
+const PRIOR_CLASSES = [
+  { classe: "pr_ea", rotulo: "Prioridade de ação extremamente alta", tipo: "area", fill: "rgba(178,24,43,0.42)", stroke: "#8b1020" },
+  { classe: "pr_ma", rotulo: "Prioridade de ação muito alta", tipo: "area", fill: "rgba(239,138,98,0.45)", stroke: "#b85a30" },
+  { classe: "pr_a", rotulo: "Prioridade de ação alta", tipo: "area", fill: "rgba(250,205,90,0.5)", stroke: "#a8861c" },
+];
+const CAR_CLASSES = [
+  { classe: "car_local", rotulo: "Imóvel do CAR onde está o empreendimento", tipo: "area", fill: "rgba(255,215,0,0.30)", stroke: "#ff2a00", larg: 2.6 },
+  { classe: "car_iru", rotulo: "Imóvel rural (CAR)", tipo: "area", fill: "rgba(255,255,255,0.12)", stroke: "#ffd23f", larg: 1.3 },
+  { classe: "car_ast", rotulo: "Assentamento da reforma agrária (CAR)", tipo: "area", fill: "rgba(230,120,30,0.25)", stroke: "#ff8c1a", larg: 1.6 },
+  { classe: "car_pct", rotulo: "Território de povos e comunidades tradicionais (CAR)", tipo: "area", fill: "rgba(160,90,190,0.28)", stroke: "#c77dff", larg: 1.6 },
+];
+const CAR_STATUS = { AT: "ativo", PE: "pendente", SU: "suspenso", CA: "cancelado" };
+const ACESSO_CLASSES = [
+  { classe: "rota", rotulo: "Rota de acesso", tipo: "linha", stroke: "#d7301f", larg: 4.5 },
+  { classe: "origem", rotulo: "Ponto de partida", tipo: "bola", fill: "#1f4e79", stroke: "#0d2a45" },
+];
+const ENTORNO_CLASSES = [
+  { classe: "raio", rotulo: "Raio de análise", tipo: "linha", stroke: "#444444", larg: 1.6, tracejado: true },
+  { classe: "educacao", curto: "Escolas e creches", rotulo: "Escola, creche ou faculdade", tipo: "bola", fill: "#1f78b4", stroke: "#0e4a73" },
+  { classe: "saude", curto: "Unidades de saúde", rotulo: "Hospital, clínica ou posto de saúde", tipo: "bola", fill: "#d81b60", stroke: "#8a0f3c" },
+  { classe: "culto", curto: "Templos e igrejas", rotulo: "Templo ou igreja", tipo: "bola", fill: "#6a3d9a", stroke: "#40235e" },
+  { classe: "assistencia", curto: "Assistência social", rotulo: "Asilo, abrigo ou centro comunitário", tipo: "bola", fill: "#ff7f00", stroke: "#a85300" },
+];
+const TIPO_OSM = { school: "escola", kindergarten: "creche", college: "faculdade", university: "universidade", hospital: "hospital", clinic: "clínica",
+  doctors: "consultório", dentist: "dentista", place_of_worship: "templo", social_facility: "assistência social", nursing_home: "asilo",
+  community_centre: "centro comunitário", centre: "posto de saúde", doctor: "consultório" };
+const CAPITAIS = { AC: "Rio Branco", AL: "Maceió", AP: "Macapá", AM: "Manaus", BA: "Salvador", CE: "Fortaleza", DF: "Brasília", ES: "Vitória",
+  GO: "Goiânia", MA: "São Luís", MT: "Cuiabá", MS: "Campo Grande", MG: "Belo Horizonte", PA: "Belém", PB: "João Pessoa", PR: "Curitiba",
+  PE: "Recife", PI: "Teresina", RJ: "Rio de Janeiro", RN: "Natal", RS: "Porto Alegre", RO: "Porto Velho", RR: "Boa Vista",
+  SC: "Florianópolis", SP: "São Paulo", SE: "Aracaju", TO: "Palmas" };
+
+function campoQue(p, re) { const k = Object.keys(p).find((x) => re.test(x)); return k ? String(p[k] ?? "").trim() : ""; }
+function textoDist(m) { return m < 1000 ? `${fmtN(Math.round(m / 10) * 10)} m` : `${fmtN(m / 1000, 1)} km`; }
+
+// estilo por classe (área, linha, bola ou marca) com rótulo opcional
+function estiloClasses(CL, rotular) {
+  const cache = {};
+  return (f) => {
+    const c = CL.find((x) => x.classe === f.get("classe"));
+    if (!c) return null;
+    const k = `${c.classe}|${K}`;
+    if (!cache[k]) {
+      const ponto = c.tipo === "bola" || c.tipo === "marca";
+      cache[k] = ponto
+        ? new ol.style.Style({ image: c.tipo === "bola"
+            ? new ol.style.Circle({ radius: 6 * K, fill: new ol.style.Fill({ color: c.fill }), stroke: new ol.style.Stroke({ color: "#fff", width: 1.6 * K }) })
+            : new ol.style.RegularShape({ points: 3, radius: 7 * K, fill: new ol.style.Fill({ color: c.fill }), stroke: new ol.style.Stroke({ color: "#fff", width: 1.4 * K }) }) })
+        : c.tipo === "linha"
+          ? new ol.style.Style({ stroke: new ol.style.Stroke({ color: c.stroke, width: (c.larg || 2) * K, lineDash: c.tracejado ? [8 * K, 6 * K] : undefined }) })
+          : new ol.style.Style({ fill: new ol.style.Fill({ color: c.fill }), stroke: new ol.style.Stroke({ color: c.stroke, width: (c.larg || 1.6) * K }) });
+    }
+    const t = rotular ? rotular(f, c) : "";
+    if (!t) return cache[k];
+    const ponto = c.tipo === "bola" || c.tipo === "marca";
+    return [cache[k], new ol.style.Style({ text: new ol.style.Text({ text: t, font: `bold ${Math.round(10 * K)}px Arial`, offsetY: ponto ? -13 * K : 0,
+      overflow: false, fill: new ol.style.Fill({ color: c.stroke || "#222" }), stroke: new ol.style.Stroke({ color: "#fff", width: 3 * K }) }) })];
+  };
+}
+function legendaClasses(CL, camada) {
+  const pres = new Set(camada.getSource().getFeatures().map((f) => f.get("classe")));
+  return CL.filter((c) => pres.has(c.classe)).map((c) => ({ tipo: c.tipo, fill: c.fill, stroke: c.stroke, rotulo: c.rotulo, tracejado: c.tracejado }));
+}
+function vetorQGIS(CL, feats) {
+  return turf.featureCollection(feats.map((f) => {
+    const c = CL.find((x) => x.classe === f.properties.classe);
+    return turf.feature(f.geometry, { ...f.properties, rotulo: c.rotulo, cor: c.tipo === "linha" ? c.stroke : c.fill });
+  }));
 }
 
 /* ── serviços oficiais (ANA/SNIRH e INDE) ───────────────────────────── */
@@ -998,18 +1294,7 @@ async function hidroOSM(bb) {
       const q = `[out:json][timeout:40];(way["waterway"~"^(river|stream|canal|ditch|drain|brook)$"](${bb[1]},${bb[0]},${bb[3]},${bb[2]});` +
         `way["natural"~"^(water|wetland)$"](${bb[1]},${bb[0]},${bb[3]},${bb[2]});way["waterway"="riverbank"](${bb[1]},${bb[0]},${bb[3]},${bb[2]});` +
         `relation["natural"="water"](${bb[1]},${bb[0]},${bb[3]},${bb[2]}););out geom;`;
-      let r = null, ultimoErro;
-      for (const srv of ["https://overpass-api.de/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
-                         "https://overpass.private.coffee/api/interpreter"]) {
-        const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 30000);
-        try {
-          const resp = await fetch(`${srv}?data=${encodeURIComponent(q)}`, { signal: ctl.signal });
-          if (!resp.ok) throw new Error(`${resp.status} ${srv}`);
-          r = await resp.json();
-          break;
-        } catch (e) { ultimoErro = e; } finally { clearTimeout(tm); }
-      }
-      if (!r) throw new Error("os servidores do OpenStreetMap (Overpass) não responderam");
+      const r = await overpass(q, 45000);
       const feats = [];
       for (const el of r.elements) {
         const tg = el.tags || {};
