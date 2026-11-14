@@ -89,7 +89,7 @@ function contar() {
 function ir(t, filtro) {
   aba = t;
   $$("#abas button").forEach((b) => b.classList.toggle("on", b.dataset.t === t));
-  ["dash", "ag", "li", "cl", "doc"].forEach((x) => { $("#" + x).hidden = x !== t; });
+  ["dash", "ag", "li", "cl", "doc", "ger"].forEach((x) => { $("#" + x).hidden = x !== t; });
   if (filtro) Object.assign(t === "li" ? FL : F, filtro, t === "ag" ? { lim: 120 } : {});
   desenhar();
   window.scrollTo({ top: 0 });
@@ -101,7 +101,7 @@ function desenhar() {
   $("#cAg").textContent = c.atr || "";
   $("#cAg").title = c.atr ? `${c.atr} entregas atrasadas` : "";
   $("#cLi").textContent = c.licVenc + c.renAtr || "";
-  ({ dash: dashboard, ag: agenda, li: licencas, cl: calendario, doc: () => documentos() })[aba](c);
+  ({ dash: dashboard, ag: agenda, li: licencas, cl: calendario, doc: () => documentos(), ger: () => gerador() })[aba](c);
 }
 
 /* ── dashboard ──────────────────────────────────────────────────────── */
@@ -540,7 +540,7 @@ function csv() {
 }
 
 function backup() {
-  baixar(`backup-painel-pa-${iso(HOJE)}.json`, "application/json", JSON.stringify({ custom: CUS, done, docs: ler("pa_docs", {}), ren: ler("pa_ren", {}), gerado: new Date().toISOString() }, null, 1));
+  baixar(`backup-painel-pa-${iso(HOJE)}.json`, "application/json", JSON.stringify({ custom: CUS, done, docs: ler("pa_docs", {}), ren: ler("pa_ren", {}), ger: ler("pa_ger", {}), gerado: new Date().toISOString() }, null, 1));
   aviso("Backup salvo na pasta de downloads");
 }
 
@@ -775,7 +775,7 @@ document.addEventListener("keydown", (ev) => {
   if (ev.key === "Enter" && ev.target.dataset?.dia) { abrirDia(ev.target.dataset.dia); return; }
   if (ev.target.closest("input,select,textarea") || ev.ctrlKey || ev.metaKey || ev.altKey || $("dialog[open]")) return;
   if (ev.key === "/") { ev.preventDefault(); if (aba !== "ag") ir("ag"); $("#q").focus(); }
-  else if (["1", "2", "3", "4", "5"].includes(ev.key)) ir(["dash", "ag", "li", "cl", "doc"][+ev.key - 1]);
+  else if (["1", "2", "3", "4", "5", "6"].includes(ev.key)) ir(["dash", "ag", "li", "cl", "doc", "ger"][+ev.key - 1]);
   else if (ev.key.toLowerCase() === "n") abrirNova();
 });
 
@@ -808,7 +808,7 @@ fetch("data.json", { cache: "no-cache" }).then((r) => r.json()).then((d) => {
   BASE = d;
   montar();
   const h = location.hash.slice(1);
-  ir(["dash", "ag", "li", "cl", "doc"].includes(h) ? h : "dash");
+  ir(["dash", "ag", "li", "cl", "doc", "ger"].includes(h) ? h : "dash");
 }).catch(() => {
   $("#dash").innerHTML = `<div class="alerta"><span class="ic">⚠️</span><div><h2>Não foi possível carregar os dados</h2><p>Abra o painel pelo endereço do site (não pelo arquivo no computador) e atualize a página.</p></div></div>`;
 });

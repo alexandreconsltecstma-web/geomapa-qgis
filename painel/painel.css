@@ -315,3 +315,17 @@ table.t { width: 100%; border-collapse: collapse; }
 .lic-form label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--m); }
 .lic-form label.lic-chk { flex-direction: row; align-items: center; gap: 6px; color: var(--t); font-size: 13px; }
 .lic-form input:not([type=checkbox]) { font: inherit; padding: 6px 8px; border: 1px solid var(--ln); border-radius: 8px; background: #fff; color: var(--t); }
+
+/* ── aba Gerar documentos ── */
+.ger { padding: 18px 20px; max-width: 1100px; margin: 0 auto; }
+.ger-topo { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+.ger-topo h2 { margin: 0 0 4px; } .ger mark { background: #ffff00; }
+.ger fieldset { border: 1px solid var(--ln); border-radius: 12px; padding: 10px 14px 14px; margin: 14px 0 0; }
+.ger legend { font-weight: 700; color: var(--g); padding: 0 6px; }
+.ger label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--m); }
+.ger input:not([type=checkbox]):not([type=radio]), .ger select, .ger textarea { font: inherit; font-size: 14px; padding: 7px 9px; border: 1px solid var(--ln);
+  border-radius: 8px; background: #fff; color: var(--t); }
+.ger-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; margin-bottom: 10px; }
+.ger-linha { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 10px; } .ger-linha .largo { flex: 1 1 320px; }
+.ger-chk, .ger-org { display: flex; flex-wrap: wrap; gap: 8px; }
+.ger .pill { flex-direction: row; align-items: center; gap: 6px; background: var(--g3); border-radius: 999px; padding: 6px 12px; color: var(--t); font-size: 13px; cursor: pointer; }
