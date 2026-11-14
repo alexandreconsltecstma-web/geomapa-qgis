@@ -88,7 +88,7 @@ function contar() {
 function ir(t, filtro) {
   aba = t;
   $$("#abas button").forEach((b) => b.classList.toggle("on", b.dataset.t === t));
-  ["dash", "ag", "li", "cl"].forEach((x) => { $("#" + x).hidden = x !== t; });
+  ["dash", "ag", "li", "cl", "doc"].forEach((x) => { $("#" + x).hidden = x !== t; });
   if (filtro) Object.assign(t === "li" ? FL : F, filtro, t === "ag" ? { lim: 120 } : {});
   desenhar();
   window.scrollTo({ top: 0 });
@@ -100,7 +100,7 @@ function desenhar() {
   $("#cAg").textContent = c.atr || "";
   $("#cAg").title = c.atr ? `${c.atr} entregas atrasadas` : "";
   $("#cLi").textContent = c.licVenc + c.renAtr || "";
-  ({ dash: dashboard, ag: agenda, li: licencas, cl: calendario })[aba](c);
+  ({ dash: dashboard, ag: agenda, li: licencas, cl: calendario, doc: () => documentos() })[aba](c);
 }
 
 /* ── dashboard ──────────────────────────────────────────────────────── */
@@ -425,6 +425,7 @@ function detalhe(i) {
     <div class="ferramentas"><button class="btn" data-gen="${i}">🖨 Gerar calendário (PDF)</button>
       ${l.file ? `<a class="btn claro" href="${esc(l.file)}" target="_blank" rel="noopener">Abrir PDF pronto</a>` : ""}
       <button class="btn claro" data-acao="resumoEmp" data-i="${i}">📋 Resumo desta empresa</button>
+      <button class="btn claro" data-doc="${i}" title="Checklist do órgão e pasta de arquivos desta empresa">📁 Documentos</button>
       <button class="btn claro" data-ir="ag" data-emp="${i}">Ver na agenda</button>
       <a class="btn claro" href="../?${new URLSearchParams({ empreendimento: l.nome, cnpj: l.cnpj === "—" ? "" : l.cnpj, licenca: `${l.tipo} nº ${l.num}` })}" title="Abre o GeoMapa com os dados desta licença">🗺 Fazer mapas</a></div>
     <ul class="lista" data-sem-emp>${es.map((e) => itemLista(e, true)).join("")}</ul>`;
@@ -536,7 +537,7 @@ function csv() {
 }
 
 function backup() {
-  baixar(`backup-painel-pa-${iso(HOJE)}.json`, "application/json", JSON.stringify({ custom: CUS, done, gerado: new Date().toISOString() }, null, 1));
+  baixar(`backup-painel-pa-${iso(HOJE)}.json`, "application/json", JSON.stringify({ custom: CUS, done, docs: ler("pa_docs", {}), gerado: new Date().toISOString() }, null, 1));
   aviso("Backup salvo na pasta de downloads");
 }
 
@@ -549,6 +550,7 @@ function restaurar(f) {
       if (!confirm(`Restaurar o backup? Isso troca as marcações (${Object.keys(o.done || {}).length}) e as licenças adicionadas (${(o.custom || []).length}) deste navegador.`)) return;
       CUS = o.custom || []; done = o.done || {};
       gravar("pa_custom", CUS); gravar("pa_done", done);
+      if (o.docs) { gravar("pa_docs", o.docs); if (typeof DOCS !== "undefined") DOCS = o.docs; }
       montar(); desenhar(); aviso("Backup restaurado ✔");
     } catch (e) { alert("Arquivo de backup inválido."); }
   };
@@ -769,7 +771,7 @@ document.addEventListener("keydown", (ev) => {
   if (ev.key === "Enter" && ev.target.dataset?.dia) { abrirDia(ev.target.dataset.dia); return; }
   if (ev.target.closest("input,select,textarea") || ev.ctrlKey || ev.metaKey || ev.altKey || $("dialog[open]")) return;
   if (ev.key === "/") { ev.preventDefault(); if (aba !== "ag") ir("ag"); $("#q").focus(); }
-  else if (["1", "2", "3", "4"].includes(ev.key)) ir(["dash", "ag", "li", "cl"][+ev.key - 1]);
+  else if (["1", "2", "3", "4", "5"].includes(ev.key)) ir(["dash", "ag", "li", "cl", "doc"][+ev.key - 1]);
   else if (ev.key.toLowerCase() === "n") abrirNova();
 });
 
@@ -802,7 +804,7 @@ fetch("data.json", { cache: "no-cache" }).then((r) => r.json()).then((d) => {
   BASE = d;
   montar();
   const h = location.hash.slice(1);
-  ir(["dash", "ag", "li", "cl"].includes(h) ? h : "dash");
+  ir(["dash", "ag", "li", "cl", "doc"].includes(h) ? h : "dash");
 }).catch(() => {
   $("#dash").innerHTML = `<div class="alerta"><span class="ic">⚠️</span><div><h2>Não foi possível carregar os dados</h2><p>Abra o painel pelo endereço do site (não pelo arquivo no computador) e atualize a página.</p></div></div>`;
 });
