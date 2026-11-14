@@ -93,9 +93,9 @@ function geometrias() {
   if (!estado.ponto) return {};
   const [r1, r2] = raios();
   const centro = turf.point(estado.ponto);
-  // com a ADA desenhada/carregada, AID e AII são faixas ao redor dela; sem ADA, círculos em volta do ponto
-  const c1 = estado.lote ? turf.buffer(estado.lote, r1, { units: "meters", steps: 32 }) : turf.circle(centro, r1 / 1000, { steps: 128, units: "kilometers" });
-  const c2 = estado.lote ? turf.buffer(estado.lote, r2, { units: "meters", steps: 32 }) : turf.circle(centro, r2 / 1000, { steps: 128, units: "kilometers" });
+  // AID e AII: círculos em volta do ponto (mesmo com a ADA desenhada)
+  const c1 = turf.circle(centro, r1 / 1000, { steps: 128, units: "kilometers" });
+  const c2 = turf.circle(centro, r2 / 1000, { steps: 128, units: "kilometers" });
   const anel = turf.difference(turf.featureCollection([c2, c1]));
   return { ponto: centro, aid: c1, aii: anel };
 }
@@ -124,8 +124,8 @@ function nomesAreas() {
   const [r1, r2] = raios();
   return {
     ada: estado.lote ? `ADA – área do empreendimento (${textoArea(estado.lote)})` : "ADA – área do empreendimento",
-    aid: estado.lote ? `AID – faixa de ${r1} m ao redor da ADA` : `AID – raio de ${r1} m`,
-    aii: estado.lote ? `AII – faixa de ${r1} a ${r2} m da ADA` : `AII – faixa de ${r1} a ${r2} m`,
+    aid: `AID – raio de ${r1} m a partir do ponto`,
+    aii: `AII – faixa de ${r1} a ${r2} m do ponto`,
   };
 }
 
