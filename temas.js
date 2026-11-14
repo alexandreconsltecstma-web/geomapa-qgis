@@ -8,7 +8,7 @@ const temaEstado = {
   id: null, legenda: [], info: [], quadro: null, fonte: "", vetor: null, geom: null,
   carregando: false, aviso: "",
 };
-const cacheTema = { clima: null, solos: null, biomas: null, normais: {}, ar: {}, imgs: {} };
+const cacheTema = { clima: null, solos: null, biomas: null, saneamento: null, normais: {}, ar: {}, imgs: {} };
 
 const RES_Z = (z) => 156543.03392804097 / 2 ** z;
 const hex = (r, g, b) => "#" + [r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("");
@@ -517,6 +517,103 @@ const TEMAS = {
     },
   },
 
+  saneamento: {
+    nome: "Saneamento (água e esgoto)", titulo: "Prestadores de saneamento na região do empreendimento", base: "claro", escala: "uf", vetorial: true,
+    fonte: "CASAL – Plano de Negócios 2024 e aditivo do Bloco B (29/08/2025); limites municipais: IBGE; ETEs e ETAs: OpenStreetMap",
+    opacidade: 0.6,
+    camadas() {
+      const estilos = {};
+      return [new ol.layer.Vector({
+        className: "tema", source: new ol.source.Vector(), declutter: true,
+        style: (f) => {
+          const c = SAN_EMPRESAS[f.get("empresa")] || SAN_PONTOS[f.get("classe")];
+          if (!c) return null;
+          const ponto = !!SAN_PONTOS[f.get("classe")];
+          const k = `${f.get("empresa") || f.get("classe")}|${K}`;
+          if (!estilos[k]) estilos[k] = ponto
+            ? new ol.style.Style({ image: f.get("classe") === "eta"
+                ? new ol.style.Circle({ radius: 5.5 * K, fill: new ol.style.Fill({ color: c.fill }), stroke: new ol.style.Stroke({ color: "#fff", width: 1.4 * K }) })
+                : new ol.style.RegularShape({ points: 3, radius: 7 * K, fill: new ol.style.Fill({ color: c.fill }), stroke: new ol.style.Stroke({ color: "#fff", width: 1.4 * K }) }) })
+            : new ol.style.Style({ fill: new ol.style.Fill({ color: c.fill }), stroke: new ol.style.Stroke({ color: "#ffffff", width: 1 * K }) });
+          const res = mapa.getView().getResolution() / K;
+          if (ponto ? res > 60 : res > 400) return estilos[k];
+          return [estilos[k], new ol.style.Style({ text: new ol.style.Text({
+            text: ponto ? f.get("nome") || "" : f.get("nome"), font: `${ponto ? "" : "bold "}${Math.round((ponto ? 9.5 : 10) * K)}px Arial`,
+            offsetY: ponto ? -12 * K : 0, overflow: false,
+            fill: new ol.style.Fill({ color: ponto ? c.stroke : "#222" }), stroke: new ol.style.Stroke({ color: "#fff", width: 3 * K }) }) })];
+        },
+      })];
+    },
+    async atualizar(camadas) {
+      const src = camadas[0].getSource();
+      if (!src.getFeatures().some((f) => f.get("empresa"))) {
+        const d = await dadosSaneamento();
+        src.addFeatures(d.features.map((f) => {
+          const g = d.grupos[f.properties.grupo];
+          return fmtGeo.readFeature(turf.feature(f.geometry, { ...f.properties, empresa: g.empresa, modo: g.modo }));
+        }));
+      }
+      // ETEs e ETAs do OpenStreetMap num raio de 15 km do ponto
+      let pts = [];
+      temaEstado.aviso = "";
+      if (estado.ponto) {
+        try { pts = await saneamentoOSM(estado.ponto); }
+        catch (e) { temaEstado.aviso = "As ETEs e ETAs do OpenStreetMap não carregaram agora (Overpass sem resposta)."; }
+      }
+      src.getFeatures().filter((f) => f.get("classe")).forEach((f) => src.removeFeature(f));
+      src.addFeatures(pts.map((f) => fmtGeo.readFeature(f)));
+      const d = await dadosSaneamento();
+      temaEstado.vetor = turf.featureCollection([
+        ...d.features.map((f) => { const e = d.grupos[f.properties.grupo].empresa;
+          return turf.feature(f.geometry, { nome: f.properties.nome, codigo: f.properties.codigo, empresa: e,
+            modo: d.grupos[f.properties.grupo].modo, rotulo: e, cor: SAN_EMPRESAS[e].fill }); }),
+        ...pts.map((f) => turf.feature(f.geometry, { ...f.properties, rotulo: SAN_PONTOS[f.properties.classe].rotulo, cor: SAN_PONTOS[f.properties.classe].fill })),
+      ]);
+      if (estado.ponto && estado.municipio && estado.municipio.uf !== "AL")
+        temaEstado.aviso = "Os prestadores de saneamento estão cadastrados só para Alagoas por enquanto.";
+    },
+    async legenda(camadas) {
+      const ext = mapa.getView().calculateExtent(mapa.getSize());
+      const s = new Set();
+      camadas[0].getSource().forEachFeatureIntersectingExtent(ext, (f) => { s.add(f.get("empresa") || f.get("classe")); });
+      return [
+        ...Object.entries(SAN_EMPRESAS).filter(([e]) => s.has(e)).map(([e, c]) => ({ tipo: "area", fill: c.fill, stroke: "#ffffff", rotulo: e })),
+        ...Object.entries(SAN_PONTOS).filter(([k]) => s.has(k)).map(([k, c]) => ({ tipo: k === "eta" ? "bola" : "marca", fill: c.fill, stroke: c.stroke, rotulo: c.rotulo })),
+      ];
+    },
+    async info(p, camadas) {
+      const d = await dadosSaneamento();
+      const pt = turf.point(p);
+      const m = d.features.find((f) => turf.booleanPointInPolygon(pt, f))
+        || (estado.municipio && d.features.find((f) => f.properties.codigo === String(estado.municipio.feature.properties.codarea)));
+      const l = [];
+      if (m) {
+        const g = d.grupos[m.properties.grupo];
+        l.push(["Prestador em " + m.properties.nome, g.empresa]);
+        l.push(["Como funciona", g.modo]);
+        if (SAN_AGRESTE.has(m.properties.nome)) l.push(["Água tratada", "Sistema Coletivo do Agreste (PPP CASAL/Agreste Saneamento)"]);
+      } else l.push(["Prestador", "sem cadastro para este local (só Alagoas por enquanto)"]);
+      const ref = estado.lote || pt, daRef = estado.lote ? "da ADA" : "do ponto";
+      const perto = (cl) => {
+        let b = null;
+        for (const f of camadas[0].getSource().getFeatures()) {
+          if (f.get("classe") !== cl) continue;
+          const g = fmtGeo.writeFeatureObject(f), dist = distanciaM(ref, g);
+          if (!b || dist < b.d) b = { d: dist, p: g.properties };
+        }
+        return b;
+      };
+      const km = (x) => (x < 1000 ? `${fmtN(Math.round(x / 10) * 10)} m` : `${fmtN(x / 1000, 1)} km`);
+      for (const cl of ["ete", "eta"]) {
+        const b = perto(cl);
+        const nome = cl === "ete" ? "ETE (esgoto) mais próxima" : "ETA (água) mais próxima";
+        if (b) l.push([nome, `${b.p.nome || "sem nome"}${b.p.operador ? " – " + b.p.operador : ""}, a ${km(b.d)} ${daRef}`]);
+        else if (estado.ponto && !temaEstado.aviso) l.push([nome, "nenhuma mapeada no OpenStreetMap num raio de 15 km"]);
+      }
+      return l;
+    },
+  },
+
   relevo: {
     nome: "Hipsometria (relevo)", titulo: "Hipsometria do entorno do empreendimento", base: "claro", escala: 6000, dinamico: true,
     fonte: "Mapzen Terrain Tiles (SRTM/NASA, ~30 m) e Esri World Hillshade; altitude no ponto: Copernicus DEM (Open-Meteo)",
@@ -809,6 +906,56 @@ const PROT_CLASSES = [
   { classe: "ti", rotulo: "Terra indígena", tipo: "area", fill: "rgba(217,142,73,0.45)", stroke: "#8b4513" },
   { classe: "caverna", rotulo: "Caverna cadastrada (CANIE)", tipo: "ponto", fill: "#6d4c41", stroke: "#3e2723" },
 ];
+
+/* ── saneamento (Alagoas): prestador por município e ETEs/ETAs do OpenStreetMap ── */
+
+const SAN_EMPRESAS = {
+  "BRK Ambiental (Bloco A)": { fill: "rgba(31,120,180,0.55)" },
+  "Águas do Sertão (Bloco B)": { fill: "rgba(240,140,40,0.55)" },
+  "Verde Alagoas (Bloco C)": { fill: "rgba(51,160,44,0.55)" },
+  "CASAL": { fill: "rgba(0,131,143,0.55)" },
+  "SAAE (autarquia municipal)": { fill: "rgba(123,82,171,0.55)" },
+};
+const SAN_PONTOS = {
+  ete: { rotulo: "ETE – estação de tratamento de esgoto (OSM)", fill: "#8d5a2b", stroke: "#5d3a1a" },
+  eta: { rotulo: "ETA – estação de tratamento de água (OSM)", fill: "#0b5fa5", stroke: "#083f6e" },
+};
+// municípios abastecidos pelo Sistema Coletivo do Agreste (PPP CASAL/Agreste Saneamento, contrato 090/2012)
+const SAN_AGRESTE = new Set(["Arapiraca", "Craíbas", "Igaci", "Coité do Nóia", "Girau do Ponciano", "Feira Grande", "São Brás",
+  "Campo Grande", "Lagoa da Canoa", "Olho d'Água Grande"]);
+
+async function dadosSaneamento() {
+  if (!cacheTema.saneamento) cacheTema.saneamento = json("dados/saneamento_al.json");
+  return cacheTema.saneamento;
+}
+
+async function overpass(q) {
+  for (const srv of ["https://overpass-api.de/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+                     "https://overpass.private.coffee/api/interpreter"]) {
+    const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 30000);
+    try {
+      const resp = await fetch(`${srv}?data=${encodeURIComponent(q)}`, { signal: ctl.signal });
+      if (resp.ok) return await resp.json();
+    } catch (e) { /* tenta o próximo espelho */ } finally { clearTimeout(tm); }
+  }
+  throw new Error("os servidores do OpenStreetMap (Overpass) não responderam");
+}
+
+const cacheSanOSM = {};
+async function saneamentoOSM([lon, lat]) {
+  const k = `${lon.toFixed(3)},${lat.toFixed(3)}`;
+  if (!cacheSanOSM[k]) cacheSanOSM[k] = (async () => {
+    const r = await overpass(`[out:json][timeout:40];nwr["man_made"~"^(wastewater_plant|water_works)$"](around:15000,${lat},${lon});out center tags;`);
+    return r.elements.map((el) => {
+      const c = el.type === "node" ? [el.lon, el.lat] : el.center ? [el.center.lon, el.center.lat] : null;
+      if (!c) return null;
+      const tg = el.tags || {};
+      return turf.point(c, { classe: tg.man_made === "wastewater_plant" ? "ete" : "eta", nome: tg.name || "",
+                             operador: tg.operator || "", osm: `${el.type}/${el.id}` });
+    }).filter(Boolean);
+  })().catch((e) => { delete cacheSanOSM[k]; throw e; });
+  return cacheSanOSM[k];
+}
 
 /* ── serviços oficiais (ANA/SNIRH e INDE) ───────────────────────────── */
 

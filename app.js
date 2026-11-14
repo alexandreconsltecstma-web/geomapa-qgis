@@ -27,6 +27,7 @@ const estado = {
   lote: null,       // GeoJSON Feature (Polygon/MultiPolygon)
   municipio: null,  // { feature, nome, uf }
   ufs: null,        // FeatureCollection das UFs (malha mínima)
+  travado: false,   // ponto travado: cliques, buscas e coordenadas não o movem
 };
 
 /* ── mapa ─────────────────────────────────────────────────────────────── */
@@ -92,8 +93,9 @@ function geometrias() {
   if (!estado.ponto) return {};
   const [r1, r2] = raios();
   const centro = turf.point(estado.ponto);
-  const c1 = turf.circle(centro, r1 / 1000, { steps: 128, units: "kilometers" });
-  const c2 = turf.circle(centro, r2 / 1000, { steps: 128, units: "kilometers" });
+  // com a ADA desenhada/carregada, AID e AII são faixas ao redor dela; sem ADA, círculos em volta do ponto
+  const c1 = estado.lote ? turf.buffer(estado.lote, r1, { units: "meters", steps: 32 }) : turf.circle(centro, r1 / 1000, { steps: 128, units: "kilometers" });
+  const c2 = estado.lote ? turf.buffer(estado.lote, r2, { units: "meters", steps: 32 }) : turf.circle(centro, r2 / 1000, { steps: 128, units: "kilometers" });
   const anel = turf.difference(turf.featureCollection([c2, c1]));
   return { ponto: centro, aid: c1, aii: anel };
 }
@@ -115,6 +117,16 @@ function desenhar(enquadrar) {
   for (const id of ["btn-png", "btn-pdf", "btn-qgis"]) $(id).disabled = !ok;
   if (ok && $("status").dataset.inicial !== "0") { status(""); $("status").dataset.inicial = "0"; }
   if (enquadrar && ok) enquadrarMapa();
+  if (typeof infoADA === "function") { infoADA(); mostrarTrava(); if (estado.travado) salvarTrava(); }
+}
+
+function nomesAreas() {
+  const [r1, r2] = raios();
+  return {
+    ada: estado.lote ? `ADA – área do empreendimento (${textoArea(estado.lote)})` : "ADA – área do empreendimento",
+    aid: estado.lote ? `AID – faixa de ${r1} m ao redor da ADA` : `AID – raio de ${r1} m`,
+    aii: estado.lote ? `AII – faixa de ${r1} a ${r2} m da ADA` : `AII – faixa de ${r1} a ${r2} m`,
+  };
 }
 
 function enquadrarMapa() {
@@ -140,6 +152,7 @@ function status(txt, erro) {
 }
 
 async function definirPonto(lon, lat, origem) {
+  if (estado.travado && !["arquivo", "ada", "restaurar"].includes(origem)) { avisoTrava(); return; }
   if (!isFinite(lon) || !isFinite(lat) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
     $("info-local").textContent = "Coordenadas inválidas.";
     $("info-local").classList.add("erro");
@@ -556,12 +569,12 @@ function desenharSituacao(ctx, ufs, x, y, w, h) {
 }
 
 function itensLegenda() {
-  const [r1, r2] = raios();
+  const nm = nomesAreas();
   const it = [{ tipo: "ponto", rotulo: $("rotulo").value.trim() || $("empreendimento").value.trim() || "Empreendimento" }];
-  if (estado.lote) it.push({ tipo: "area", fill: "rgba(255,140,0,0.6)", stroke: "#c2410c", rotulo: "ADA – área do empreendimento" });
+  if (estado.lote) it.push({ tipo: "area", fill: "rgba(255,140,0,0.6)", stroke: "#c2410c", rotulo: nm.ada });
   if (modelo() === "influencia") {
-    it.push({ tipo: "area", fill: "rgba(155,120,200,0.35)", stroke: "#5b3f8c", rotulo: `AID – raio de ${r1} m` });
-    it.push({ tipo: "area", fill: "rgba(230,230,120,0.35)", stroke: "#8a8a1f", rotulo: `AII – faixa de ${r1} a ${r2} m` });
+    it.push({ tipo: "area", fill: "rgba(155,120,200,0.35)", stroke: "#5b3f8c", rotulo: nm.aid });
+    it.push({ tipo: "area", fill: "rgba(230,230,120,0.35)", stroke: "#8a8a1f", rotulo: nm.aii });
   }
   if (camadas.municipio.getSource().getFeatures().length)
     it.push({ tipo: "area", fill: "rgba(255,255,255,0)", stroke: "#111", rotulo: `Limite municipal – ${estado.municipio.nome}` });
@@ -665,7 +678,7 @@ async function exportarQGIS() {
     titulo: $("titulo").value, subtitulo: $("subtitulo").value, empreendimento: $("empreendimento").value,
     endereco: $("endereco").value, responsavel: $("responsavel").value, data: $("data").value,
     rotulo_ponto: rot, nome_ponto: rot || "Empreendimento", modelo: modelo(), base: $("base").value,
-    centro: estado.ponto, extent: ext, raios: raios(),
+    centro: estado.ponto, extent: ext, raios: raios(), nomes: nomesAreas(),
     municipio: estado.municipio ? `${estado.municipio.nome}/${estado.municipio.uf}` : "",
     gerado_em: new Date().toISOString(),
   };
@@ -700,9 +713,167 @@ async function exportarQGIS() {
   baixar(await zip.generateAsync({ type: "blob", compression: "DEFLATE" }), nomeArquivo("zip").replace(".zip", "_qgis.zip"));
 }
 
+/* ── trava do ponto ───────────────────────────────────────────────────── */
+
+const CHAVE_TRAVA = "geomapa_trava";
+function salvarTrava() {
+  try {
+    if (estado.travado && estado.ponto) localStorage.setItem(CHAVE_TRAVA, JSON.stringify({ ponto: estado.ponto, lote: estado.lote }));
+    else localStorage.removeItem(CHAVE_TRAVA);
+  } catch (e) { /* navegador sem armazenamento: a trava vale só nesta aba */ }
+}
+function avisoTrava() {
+  if (estado.ponto) { $("lat").value = estado.ponto[1]; $("lon").value = estado.ponto[0]; }
+  $("info-local").classList.add("erro");
+  $("info-local").textContent = "O ponto está travado. Desmarque “Travar o ponto” para mudar o local.";
+  setTimeout(() => $("info-local").classList.remove("erro"), 2500);
+}
+function travar(sim) {
+  estado.travado = !!sim && !!estado.ponto;
+  mostrarTrava();
+  salvarTrava();
+}
+function mostrarTrava() {
+  $("travar").checked = estado.travado;
+  $("lat").readOnly = $("lon").readOnly = estado.travado;
+  botaoTrava.textContent = estado.travado ? "🔒 Ponto travado" : "🔓 Ponto livre";
+  botaoTrava.title = estado.travado ? "Clique para destravar o ponto" : "Clique para travar o ponto no lugar";
+  botaoTrava.disabled = !estado.ponto;
+}
+const botaoTrava = document.createElement("button");
+botaoTrava.type = "button";
+botaoTrava.addEventListener("click", () => travar(!estado.travado));
+{
+  const div = document.createElement("div");
+  div.className = "ol-unselectable ol-control trava-mapa";
+  div.appendChild(botaoTrava);
+  mapa.addControl(new ol.control.Control({ element: div }));
+}
+
+/* ── ADA: desenhar, editar, apagar e baixar ───────────────────────────── */
+
+const ada = { draw: null, modify: null };
+const zoomDuplo = mapa.getInteractions().getArray().find((i) => i instanceof ol.interaction.DoubleClickZoom);
+
+function pararADA() {
+  if (ada.draw) { mapa.removeInteraction(ada.draw); ada.draw = null; }
+  if (ada.modify) { mapa.removeInteraction(ada.modify); ada.modify = null; }
+  setTimeout(() => zoomDuplo && zoomDuplo.setActive(true), 300);  // o duplo clique que fecha o polígono não deve dar zoom
+  $("mapa").classList.remove("desenhando");
+  infoADA();
+}
+
+function desenharADA() {
+  if (ada.draw) { pararADA(); return; }  // o botão vira "Cancelar"
+  pararADA();
+  ada.draw = new ol.interaction.Draw({ type: "Polygon" });
+  ada.draw.on("drawend", (e) => {
+    const g = fmtGeo.writeFeatureObject(e.feature);
+    setTimeout(pararADA, 0);
+    definirADA(turf.feature(g.geometry, { nome: "ADA" }));
+  });
+  if (zoomDuplo) zoomDuplo.setActive(false);
+  mapa.addInteraction(ada.draw);
+  $("mapa").classList.add("desenhando");
+  infoADA();
+}
+
+function editarADA() {
+  if (ada.modify) { pararADA(); return; }
+  pararADA();
+  if (!estado.lote) return;
+  ada.modify = new ol.interaction.Modify({ source: camadas.lote.getSource() });
+  ada.modify.on("modifyend", (e) => {
+    const g = fmtGeo.writeFeatureObject(e.features.item(0));
+    definirADA(turf.feature(g.geometry, { nome: "ADA" }), true);
+  });
+  mapa.addInteraction(ada.modify);
+  infoADA();
+}
+
+async function definirADA(f, edicao) {
+  if (!f || turf.area(f) < 1) return;
+  estado.lote = f;
+  if (!estado.ponto) {
+    const c = turf.pointOnFeature(f).geometry.coordinates;
+    await definirPonto(c[0], c[1], "ada");
+  } else desenhar(false);
+  if (edicao && ada.modify) {  // desenhar() recriou a feição: a edição continua na nova
+    mapa.removeInteraction(ada.modify);
+    ada.modify = null;
+    editarADA();
+  }
+  salvarTrava();
+  if (temaEstado.id) agendarTema();
+}
+
+function apagarADA() {
+  pararADA();
+  estado.lote = null;
+  desenhar(false);
+  salvarTrava();
+  if (temaEstado.id) agendarTema();
+}
+
+function textoArea(f) {
+  const a = turf.area(f);
+  return a >= 10000 ? `${fmtN(a / 10000, 2)} ha` : `${fmtN(a)} m²`;
+}
+
+function infoADA() {
+  const tem = !!estado.lote;
+  $("btn-ada").textContent = ada.draw ? "✖ Cancelar desenho" : tem ? "✏️ Desenhar de novo" : "✏️ Desenhar ADA";
+  $("btn-ada").classList.toggle("ativo", !!ada.draw);
+  $("btn-ada-editar").textContent = ada.modify ? "✔ Concluir edição" : "Editar vértices";
+  $("btn-ada-editar").classList.toggle("ativo", !!ada.modify);
+  for (const id of ["btn-ada-editar", "btn-ada-apagar", "btn-ada-kml"]) $(id).disabled = !tem;
+  const el = $("info-ada");
+  el.classList.remove("erro");
+  if (ada.draw) { el.textContent = "Clique nos cantos da área; duplo clique (ou clique no primeiro vértice) fecha o polígono. Backspace desfaz o último vértice; Esc cancela."; return; }
+  if (ada.modify) { el.textContent = "Arraste os vértices; clique numa borda para criar um vértice; Alt + clique apaga um vértice."; return; }
+  if (!tem) { el.textContent = "Desenhe o polígono do terreno ou da obra direto no mapa (ou carregue o KML acima)."; return; }
+  const per = turf.length(turf.polygonToLine(estado.lote), { units: "meters" });
+  const cruza = turf.kinks(estado.lote).features.length > 0;
+  el.textContent = `ADA: ${textoArea(estado.lote)} · perímetro de ${fmtN(per)} m` + (cruza ? ". Atenção: as bordas se cruzam; corrija em “Editar vértices”." : ".");
+  el.classList.toggle("erro", cruza);
+}
+
+function baixarKMLADA() {
+  if (!estado.lote) return;
+  const escX = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const anel = (r) => `<LinearRing><coordinates>${r.map((c) => `${c[0].toFixed(7)},${c[1].toFixed(7)},0`).join(" ")}</coordinates></LinearRing>`;
+  const poli = (p) => `<Polygon><outerBoundaryIs>${anel(p[0])}</outerBoundaryIs>${p.slice(1).map((r) => `<innerBoundaryIs>${anel(r)}</innerBoundaryIs>`).join("")}</Polygon>`;
+  const g = estado.lote.geometry;
+  const geom = g.type === "Polygon" ? poli(g.coordinates) : `<MultiGeometry>${g.coordinates.map(poli).join("")}</MultiGeometry>`;
+  const nome = `ADA – ${$("empreendimento").value.trim() || $("rotulo").value.trim() || "empreendimento"}`;
+  const kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>${escX(nome)}</name>
+<Style id="ada"><LineStyle><color>ff0c41c2</color><width>2</width></LineStyle><PolyStyle><color>99008cff</color></PolyStyle></Style>
+<Placemark><name>${escX(nome)}</name><description>Área: ${escX(textoArea(estado.lote))}. Gerado no GeoMapa QGIS.</description><styleUrl>#ada</styleUrl>${geom}</Placemark>
+${estado.ponto ? `<Placemark><name>${escX($("rotulo").value.trim() || "Ponto")}</name><Point><coordinates>${estado.ponto[0]},${estado.ponto[1]},0</coordinates></Point></Placemark>` : ""}
+</Document></kml>`;
+  baixar(new Blob([kml], { type: "application/vnd.google-earth.kml+xml" }), nomeArquivo("kml").replace(".kml", "_ADA.kml"));
+}
+
+$("btn-ada").addEventListener("click", desenharADA);
+$("btn-ada-editar").addEventListener("click", editarADA);
+$("btn-ada-apagar").addEventListener("click", apagarADA);
+$("btn-ada-kml").addEventListener("click", baixarKMLADA);
+$("travar").addEventListener("change", (e) => {
+  if (e.target.checked && !estado.ponto) { e.target.checked = false; $("info-local").textContent = "Marque o ponto antes de travar."; return; }
+  travar(e.target.checked);
+});
+document.addEventListener("keydown", (e) => {
+  if (!ada.draw && !ada.modify) return;
+  if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName)) return;
+  if (e.key === "Escape") { e.preventDefault(); pararADA(); }
+  else if (e.key === "Backspace" && ada.draw) { e.preventDefault(); ada.draw.removeLastPoint(); }
+});
+
 /* ── eventos ──────────────────────────────────────────────────────────── */
 
 mapa.on("singleclick", (e) => {
+  if (ada.draw || ada.modify) return;  // cliques do desenho/edição da ADA não movem o ponto
   const [lon, lat] = ol.proj.toLonLat(e.coordinate);
   definirPonto(lon, lat, "clique");
 });
@@ -764,4 +935,16 @@ $("data").value = new Date().toLocaleDateString("pt-BR");
 })();
 aplicarBase();
 desenhar(false);
+// ponto travado numa visita anterior (não vale quando o Painel abre o mapa de outra empresa)
+(() => {
+  if (new URLSearchParams(location.search).get("empreendimento")) return;
+  let t = null;
+  try { t = JSON.parse(localStorage.getItem(CHAVE_TRAVA) || "null"); } catch (e) { /* sem armazenamento */ }
+  if (!t || !t.ponto) return;
+  estado.lote = t.lote || null;
+  estado.travado = true;
+  definirPonto(t.ponto[0], t.ponto[1], "restaurar").then(() => {
+    $("info-local").textContent = "Ponto travado da última visita restaurado. " + $("info-local").textContent;
+  });
+})();
 malhaUFs().catch(() => {});

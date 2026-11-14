@@ -136,7 +136,7 @@ def camadas_tema(pasta, t, geo, proj):
             if linha:
                 i["larg"] = 0.7 if i["rotulo"] == "Rio" else 0.4
         if ponto:
-            cats = [QgsRendererCategory(i["rotulo"], QgsMarkerSymbol.createSimple({"name": "circle" if "Nascente" in i["rotulo"] else "triangle",
+            cats = [QgsRendererCategory(i["rotulo"], QgsMarkerSymbol.createSimple({"name": "circle" if ("Nascente" in i["rotulo"] or i["rotulo"].startswith("ETA")) else "triangle",
                                                                                    "color": i["cor"], "outline_color": "white",
                                                                                    "size": "3.2"}), i["rotulo"]) for i in itens]
             lyr.setRenderer(QgsCategorizedSymbolRenderer("rotulo", cats))
@@ -144,6 +144,8 @@ def camadas_tema(pasta, t, geo, proj):
             categorias(lyr, "rotulo", itens, linha)
         if t["id"] == "geologia":
             rotulo(lyr, '"sigla"', 6.5, "#222222")
+        if t["id"] == "saneamento" and not ponto:
+            rotulo(lyr, '"nome"', 6.5, "#222222")
         lyr.setOpacity(t.get("opacidade", 0.8) if not (linha or ponto) else 1.0)
         no_mapa.append(lyr)
         na_legenda.append(lyr)
@@ -235,9 +237,10 @@ def main():
             rotulo(ponto, "'" + cfg["rotulo_ponto"].replace("'", " ") + "'")
         cam.append(ponto)
         leg.append(ponto)
-    for arq, nome, cor, borda in (("camadas/lote.geojson", "ADA – área do empreendimento", "255,140,0,150", "#c2410c"),
-                                  ("camadas/aid.geojson", f"AID – raio de {cfg['raios'][0]:g} m", "155,120,200,70", "#5b3f8c"),
-                                  ("camadas/aii.geojson", f"AII – faixa de {cfg['raios'][0]:g} a {cfg['raios'][1]:g} m",
+    nomes = cfg.get("nomes") or {}
+    for arq, nome, cor, borda in (("camadas/lote.geojson", nomes.get("ada", "ADA – área do empreendimento"), "255,140,0,150", "#c2410c"),
+                                  ("camadas/aid.geojson", nomes.get("aid", f"AID – raio de {cfg['raios'][0]:g} m"), "155,120,200,70", "#5b3f8c"),
+                                  ("camadas/aii.geojson", nomes.get("aii", f"AII – faixa de {cfg['raios'][0]:g} a {cfg['raios'][1]:g} m"),
                                    "230,230,120,60", "#8a8a1f")):
         if cfg["modelo"] != "influencia" and "ai" in arq:
             continue

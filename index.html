@@ -36,10 +36,21 @@
         <label>Longitude<input id="lon" type="text" inputmode="decimal" placeholder="-35.716825"></label>
       </div>
       <p class="dica">Ou clique no mapa para marcar o ponto.</p>
+      <label class="check trava"><input id="travar" type="checkbox"> 🔒 Travar o ponto <span class="dica">(cliques no mapa e buscas não mudam mais o local)</span></label>
       <label class="arquivo">Carregar KML, KMZ ou GeoJSON (ponto e/ou polígono do lote)
         <input id="arquivo" type="file" accept=".kml,.kmz,.geojson,.json">
       </label>
       <p id="info-local" class="info" aria-live="polite"></p>
+      <div class="ada">
+        <p class="sub">ADA – área diretamente afetada</p>
+        <div class="botoes">
+          <button id="btn-ada" type="button">✏️ Desenhar ADA</button>
+          <button id="btn-ada-editar" type="button" disabled>Editar vértices</button>
+          <button id="btn-ada-apagar" type="button" disabled>Apagar</button>
+          <button id="btn-ada-kml" type="button" disabled>Baixar KML</button>
+        </div>
+        <p id="info-ada" class="dica" aria-live="polite">Desenhe o polígono do terreno ou da obra direto no mapa (ou carregue o KML acima).</p>
+      </div>
     </section>
 
     <section class="bloco">
@@ -47,7 +58,7 @@
       <div class="opcoes" role="radiogroup" aria-label="Tipo de mapa">
         <p class="grupo">Localização</p>
         <label><input type="radio" name="modelo" value="localizacao" checked><span><b>Localização</b>Ponto e lote sobre o mapa de ruas</span></label>
-        <label><input type="radio" name="modelo" value="influencia"><span><b>Áreas de influência</b>ADA, AID e AII sobre imagem de satélite</span></label>
+        <label><input type="radio" name="modelo" value="influencia"><span><b>Áreas de influência</b>ADA, AID e AII sobre imagem de satélite (com a ADA desenhada, as faixas partem dela)</span></label>
         <label><input type="radio" name="modelo" value="municipio"><span><b>Situação no município</b>Limite municipal do IBGE e o ponto</span></label>
         <p class="grupo">Meio físico</p>
         <label><input type="radio" name="modelo" value="uso"><span><b>Uso e cobertura do solo</b>Sentinel-2, 10 m (2024)</span></label>
@@ -64,6 +75,8 @@
         <p class="grupo">Meio biótico e áreas protegidas</p>
         <label><input type="radio" name="modelo" value="biomas"><span><b>Biomas</b>Limites dos biomas do IBGE</span></label>
         <label><input type="radio" name="modelo" value="protegidas"><span><b>Áreas protegidas</b>Unidades de conservação, terras indígenas e cavernas</span></label>
+        <p class="grupo">Saneamento</p>
+        <label><input type="radio" name="modelo" value="saneamento"><span><b>Água e esgoto</b>Empresa que atende cada município de Alagoas (BRK, Águas do Sertão, Verde Alagoas, CASAL, SAAE), ETEs e ETAs</span></label>
       </div>
       <div id="bloco-tema" class="tema-bloco" hidden>
         <label>Transparência da camada temática
@@ -118,7 +131,7 @@
 <dialog id="ajuda">
   <h2>Como funciona</h2>
   <ol>
-    <li><b>Marque o local:</b> busque um endereço, digite as coordenadas, clique no mapa ou carregue o KML/GeoJSON do lote.</li>
+    <li><b>Marque o local:</b> busque um endereço, digite as coordenadas, clique no mapa ou carregue o KML/GeoJSON do lote. Marque <i>Travar o ponto</i> para não mudar o local sem querer. Em <i>Desenhar ADA</i>, clique nos cantos do terreno e dê um duplo clique para fechar (Esc cancela, Backspace desfaz o último vértice).</li>
     <li><b>Escolha o tipo de mapa</b> e o fundo. No modo "Áreas de influência", os raios da AID e da AII são calculados a partir do ponto. Os mapas temáticos (uso do solo, hidrografia, relevo, declividade, solos, geologia, clima, ar e biomas) já abrem num enquadramento adequado e mostram a legenda e o valor no ponto.</li>
     <li><b>Preencha os textos</b> e ajuste o zoom: o mapa baixado usa o enquadramento da tela.</li>
     <li><b>Baixe</b> o mapa pronto (PNG ou PDF A4) ou o <b>pacote para o QGIS</b>.</li>
@@ -139,6 +152,7 @@
     <li><b>Hipsometria e declividade:</b> Mapzen Terrain Tiles (SRTM, ~30 m) e Esri World Hillshade; classes de declividade da Embrapa (1979).</li>
     <li><b>Solos:</b> IBGE, BDiA – Pedologia 1:250.000. <b>Geologia:</b> SGB/CPRM, litoestratigrafia 1:1.000.000.</li>
     <li><b>Clima:</b> CHELSA v2.1 (1981–2010); climograma com ERA5/Copernicus (1991–2020) via Open-Meteo.</li>
+    <li><b>Saneamento (Alagoas):</b> CASAL – Plano de Negócios 2024 e aditivo do Bloco B de 29/08/2025 (Águas do Sertão); ETEs e ETAs do OpenStreetMap, num raio de 15 km do ponto. Confirme o prestador com a ARSAL antes de citar em documento oficial.</li>
     <li><b>Qualidade do ar:</b> NASA GIBS (MERRA-2, aerossóis) e CAMS/Copernicus via Open-Meteo. <b>Biomas:</b> IBGE (2019).</li>
   </ul>
   <p class="dica">São bases de escala regional: servem para caracterização e não substituem levantamento de campo.</p>
