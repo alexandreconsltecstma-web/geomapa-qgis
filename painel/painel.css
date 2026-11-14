@@ -300,3 +300,18 @@ table.t { width: 100%; border-collapse: collapse; }
   .doc-tab td:nth-child(n+3) { grid-column: 2; padding-top: 0; } .doc-tab tr { border-bottom: 1px solid var(--ln); } }
 @media print { body.imprimindo-doc .doc-emps, body.imprimindo-doc .doc-arqs label, body.imprimindo-doc .doc-busca { display: none !important; }
   body.imprimindo-doc .doc-grade { display: block; } body.imprimindo-doc .doc-tab select, body.imprimindo-doc .doc-tab input { border: 0; padding: 0; appearance: none; } }
+
+/* ── licença original e renovações (Detalhes) ── */
+.lic-box { padding: 12px 14px; margin: 12px 0; }
+.lic-cab { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.lic-cab h4 { margin: 0; font-size: 15px; }
+.lic-vers { width: 100%; border-collapse: collapse; font-size: 13px; margin: 10px 0; }
+.lic-vers th { text-align: left; font-size: 11px; text-transform: uppercase; color: var(--m); padding: 6px; border-bottom: 2px solid var(--ln); }
+.lic-vers td { padding: 7px 6px; border-bottom: 1px solid var(--ln); }
+.lic-vers tr.antiga td { color: var(--m); }
+.lic-form { background: var(--g3); border-radius: 10px; padding: 12px; margin-top: 10px; font-size: 13.5px; }
+.lic-form p { margin: 0 0 8px; }
+.lic-campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 8px; }
+.lic-form label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--m); }
+.lic-form label.lic-chk { flex-direction: row; align-items: center; gap: 6px; color: var(--t); font-size: 13px; }
+.lic-form input:not([type=checkbox]) { font: inherit; padding: 6px 8px; border: 1px solid var(--ln); border-radius: 8px; background: #fff; color: var(--t); }

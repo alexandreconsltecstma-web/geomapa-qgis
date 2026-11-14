@@ -56,8 +56,9 @@ function status(e) {
 
 function montar() {
   DATA = BASE.concat(CUS.map((l) => ({ ...l, custom: 1 })));
+  if (typeof aplicarRenovacao === "function") DATA = DATA.map(aplicarRenovacao);  // licenca.js: renovações registradas
   ENT = [];
-  DATA.forEach((l, i) => l.rows.forEach((r, j) => ENT.push({ ...r, i, id: `${i}_${j}`, emp: l.nome, lic: `${l.tipo} ${l.num}`, dias: dif(r.data) })));
+  DATA.forEach((l, i) => l.rows.forEach((r, j) => ENT.push({ ...r, i, id: l.renov ? `${i}r${l.renov}_${j}` : `${i}_${j}`, emp: l.nome, lic: `${l.tipo} ${l.num}`, dias: dif(r.data) })));
   ENT.sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : 0));
   LIC = DATA.map((l, i) => {
     const dv = dif(l.ven), dr = dif(l.ren);
@@ -397,7 +398,7 @@ function cartaoLic({ l, es, ent, atr }) {
   const pct = (v) => (n ? (v / n) * 100 : 0);
   const pv = Math.max(0, Math.min(100, ((HOJE - D(l.emi)) / (D(l.ven) - D(l.emi))) * 100));
   return `<article class="card lic ${atr || l.s[2] === "atr" ? "atr" : l.s[2] === "a" ? "a" : ""}">
-    <div class="linha"><span class="tag ${l.s[1]}">${l.s[0]}</span>${atr ? `<span class="tag t-atr">${plural(atr, "atrasada", "atrasadas")}</span>` : ""}${l.custom ? `<span class="tag t-ven">adicionada aqui</span>` : ""}</div>
+    <div class="linha"><span class="tag ${l.s[1]}">${l.s[0]}</span>${atr ? `<span class="tag t-atr">${plural(atr, "atrasada", "atrasadas")}</span>` : ""}${l.custom ? `<span class="tag t-ven">adicionada aqui</span>` : ""}${l.renov ? `<span class="tag t-ok">renovada</span>` : ""}</div>
     <h3>${esc(l.nome)}</h3>
     <div class="linha">${l.tipo} nº ${esc(l.num)} · CNPJ ${esc(l.cnpj)}</div>
     <div><div class="val"><span>Emissão ${fd(l.emi)}</span><span>${l.dv < 0 ? "venceu em" : "vence em"} ${fd(l.ven)}</span></div>
@@ -428,7 +429,9 @@ function detalhe(i) {
       <button class="btn claro" data-doc="${i}" title="Checklist do órgão e pasta de arquivos desta empresa">📁 Documentos</button>
       <button class="btn claro" data-ir="ag" data-emp="${i}">Ver na agenda</button>
       <a class="btn claro" href="../?${new URLSearchParams({ empreendimento: l.nome, cnpj: l.cnpj === "—" ? "" : l.cnpj, licenca: `${l.tipo} nº ${l.num}` })}" title="Abre o GeoMapa com os dados desta licença">🗺 Fazer mapas</a></div>
+    <div id="licBox"></div>
     <ul class="lista" data-sem-emp>${es.map((e) => itemLista(e, true)).join("")}</ul>`;
+  if (typeof caixaLicenca === "function") caixaLicenca(i);
   if (!$("#dDet").open) $("#dDet").showModal();
 }
 
@@ -537,7 +540,7 @@ function csv() {
 }
 
 function backup() {
-  baixar(`backup-painel-pa-${iso(HOJE)}.json`, "application/json", JSON.stringify({ custom: CUS, done, docs: ler("pa_docs", {}), gerado: new Date().toISOString() }, null, 1));
+  baixar(`backup-painel-pa-${iso(HOJE)}.json`, "application/json", JSON.stringify({ custom: CUS, done, docs: ler("pa_docs", {}), ren: ler("pa_ren", {}), gerado: new Date().toISOString() }, null, 1));
   aviso("Backup salvo na pasta de downloads");
 }
 
@@ -551,6 +554,7 @@ function restaurar(f) {
       CUS = o.custom || []; done = o.done || {};
       gravar("pa_custom", CUS); gravar("pa_done", done);
       if (o.docs) { gravar("pa_docs", o.docs); if (typeof DOCS !== "undefined") DOCS = o.docs; }
+      if (o.ren) { gravar("pa_ren", o.ren); if (typeof REN !== "undefined") REN = o.ren; }
       montar(); desenhar(); aviso("Backup restaurado ✔");
     } catch (e) { alert("Arquivo de backup inválido."); }
   };
